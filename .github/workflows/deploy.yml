@@ -40,6 +40,7 @@ jobs:
         env:
           REPO_BASE_URL: https://github.com/jeap-admin-ch
           BRANCH: feature/JEAP-7069 # TODO JEAP-7069
+          GH_TOKEN: ${{ github.token }}
 
       - name: Prepare documentation for GitHub Pages
         run: bash scripts/prepare-docs.sh
