@@ -20,3 +20,10 @@
   --ifm-color-primary-lightest: #a8e5cb;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
+
+  /* FA7 references its font only via the --fa-style-family CSS variable, which the
+     production CSS minifier (cssnano discardUnused) can't see — so it strips the
+     @font-face rule and icons render blank. This literal anchors the font as "used". */
+  .fa-solid {
+    font-family: "Font Awesome 7 Free";
+  }
