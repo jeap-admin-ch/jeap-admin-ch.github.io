@@ -19,14 +19,22 @@
     "@mdx-js/react": "3.1.1",
     "clsx": "2.1.1",
     "prism-react-renderer": "2.4.1",
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "3.10.1",
     "@docusaurus/types": "3.10.1",
     "docusaurus-plugin-llms": "^0.4.0",
     "surge": "^0.27.4"
+  },
+  "overrides": {
+    "sockjs": {
+      "uuid": "^11"
+    },
+    "tar": "^7.5.16",
+    "axios": "^1.18.0",
+    "serialize-javascript": "^7.0.5"
   },
   "browserslist": {
     "production": [
