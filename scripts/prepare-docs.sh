@@ -18,7 +18,15 @@
 #   2. Categories  Writes _category_.json for the building-blocks/ subfolder so it
 #                  appears as a labelled, positioned group in the sidebar.
 #
-#   3. Link rewrite  Fixes links that are valid on GitHub but would break the
+#   3. Repo sections  For each auto-discovered repo section (a top-level subfolder
+#                  with an index.md, assembled by clone-docs.sh from a repo's
+#                  README + docs/): truncates the README at its trailing
+#                  boilerplate (Changes/Note/License), rewrites the README's
+#                  docs/ and image links to the relocated paths, and writes a
+#                  _category_.json labelled with the repo name. index.md is the
+#                  section landing page (Docusaurus category index convention).
+#
+#   4. Link rewrite  Fixes links that are valid on GitHub but would break the
 #                  Docusaurus build (onBrokenLinks: 'throw'):
 #                    a) `](../README.md)` -> the umbrella repo's README on GitHub.
 #                       (Points at the source repo root, which has no docs page.)
@@ -92,7 +100,52 @@ JSON
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Link rewriting — applied to every Markdown file. Uses '|' as the sed
+# 3. Repo sections — process each auto-discovered repo folder (a top-level
+#    subfolder with an index.md, other than building-blocks). Folders are
+#    sorted so positions are deterministic; positions start at 10 and step by
+#    10 so all repo sections sort after the hand-written umbrella pages (1-4).
+# ---------------------------------------------------------------------------
+repo_pos=10
+for dir in "$DOCS_DEST"/*/; do
+  repo="$(basename "$dir")"
+  [ "$repo" = "building-blocks" ] && continue
+  [ -f "$dir/index.md" ] || continue
+
+  log "repo section: $repo (position $repo_pos)"
+
+  # 3a. Truncate the README-derived landing page at its trailing boilerplate.
+  #     Drops everything from the first Changes/Changelog/Note(s)/License heading
+  #     to end of file — removing the ./CHANGELOG.md and ./LICENSE links that
+  #     would otherwise break the build.
+  sed -i -E '/^##[[:space:]]+([Cc]hangelog|[Cc]hange[[:space:]]+[Ll]og|[Cc]hanges?|[Nn]otes?|[Ll]icen[sc]e)([[:space:]].*)?$/,$d' \
+    "$dir/index.md"
+
+  # 3b. Rewrite the README's links so they resolve after relocation:
+  #       docs/index.md -> ./modules.md  (collision rename done by clone-docs)
+  #       docs/<x>.md   -> ./<x>.md      (sibling subpages)
+  #       docs/images/  -> images/       (co-located assets; covers ![..](..))
+  find "$dir" -type f -name '*.md' -print0 | while IFS= read -r -d '' f; do
+    sed -i -E \
+      -e 's|\]\(docs/index\.md\)|](./modules.md)|g' \
+      -e 's|\]\(docs/([^)]+)\.md\)|](./\1.md)|g' \
+      -e 's|\]\(docs/images/|](images/|g' \
+      "$f"
+  done
+
+  # 3c. Label the section with the repo name and position it after the umbrella.
+  #     index.md is auto-detected as the category landing page, so no "link" key
+  #     here (that would conflict with the index convention).
+  cat > "$dir/_category_.json" <<JSON
+{
+  "label": "$repo",
+  "position": $repo_pos
+}
+JSON
+  repo_pos=$((repo_pos + 10))
+done
+
+# ---------------------------------------------------------------------------
+# 4. Link rewriting — applied to every Markdown file. Uses '|' as the sed
 #    delimiter so the URLs (which contain '/' and '#') need no escaping there;
 #    only the regex-special '.' in SITE_BASE_URL is escaped.
 # ---------------------------------------------------------------------------
