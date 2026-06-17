@@ -37,7 +37,7 @@ jobs:
         with:
           command: teardown
           pr_number: ${{ github.event_name == 'pull_request' && github.event.pull_request.number || '' }}
-          docs_branch: ${{ inputs.docs_branch || 'main' }}
+          docs_branch: ${{ inputs.docs_branch || 'feature/JEAP-7069' }} # TODO JEAP-7069
           token: ${{ secrets.SURGE_TOKEN }}
 
       - name: Update PR comment
