@@ -23,7 +23,15 @@ Raw npm scripts (`npm start` / `npm run build` / `npm run serve`) assume deps ar
 `docs/` is **generated and git-ignored** — never edit or commit files there; they are wiped and reassembled on every build. Two scripts run in sequence (split so each can run independently):
 
 1. `scripts/clone-docs.sh` — clones the configured jEAP repos (depth-1, branch tip) and copies their `docs/` trees into this repo's `docs/`. `root` placement copies to the top level; `nested` copies to `docs/<repo>/`. Default manifest is `jeap:root` (the umbrella repo's general doc). Env vars: `REPO_BASE_URL`, `BRANCH`, `REPOS`, `DOCS_DEST`.
-2. `scripts/prepare-docs.sh` — transforms the assembled tree **in place** (idempotent): injects `sidebar_position` front matter into top-level pages (`what-is-jeap` → `using-jeap` → `building-blocks`), writes `_category_.json` for `building-blocks/`, and rewrites links valid on GitHub but broken in Docusaurus (`../README.md` → umbrella repo README; absolute site URLs → site-internal). Because it operates in place, it can also run on a `docs/` tree copied in manually (skipping the clone).
+2. `scripts/prepare-docs.sh` — transforms the assembled tree **in place** (idempotent): applies the umbrella's order manifest (`docs/_order`) to position top-level curated content — listed files get `sidebar_position`, listed folders a labelled `_category_.json` (whose `index.md` is the section landing page via the category index convention); auto-discovered repo sections sort after at position 100+; and it rewrites links valid on GitHub but broken in Docusaurus (`../README.md` → umbrella repo README; absolute site URLs → site-internal). The sidebar order thus lives **with the content in the umbrella repo** — add a section there by adding a line to `_order`, no change here. Because it operates in place, it can also run on a `docs/` tree copied in manually (skipping the clone).
+
+   `docs/_order` format (shipped by the umbrella, one entry per line in display order; `#` comments and blanks ignored):
+   ```
+   what-is-jeap
+   using-jeap
+   building-blocks | Building Blocks
+   ```
+   Each entry names a top-level file or folder; its line number is the sidebar position. `| Label` (optional) sets a folder's category label. A file that already ships its own front matter wins over the manifest. Without `_order`, top-level entries fall back to Docusaurus' alphabetical order.
 
 To assemble from a local checkout on a feature branch:
 ```bash
