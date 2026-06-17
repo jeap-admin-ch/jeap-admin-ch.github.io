@@ -1,29 +1,111 @@
 import clsx from 'clsx';
+import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
 
+// Font Awesome (existing icon font) — core + solid set only, used for the feature icons.
+import '@fortawesome/fontawesome-free/css/fontawesome.min.css';
+import '@fortawesome/fontawesome-free/css/solid.min.css';
+
 import styles from './index.module.css';
+
+// The six main parts / advantages of jEAP advertised on the landing page.
+// Each links to the relevant documentation page.
+const FEATURES = [
+  {
+    icon: 'fa-solid fa-layer-group',
+    title: 'Curated Platform',
+    description:
+      'Inherit a single Maven parent and get a tested, version-aligned dependency tree — convention over configuration.',
+    to: '/docs/using-jeap',
+  },
+  {
+    icon: 'fa-solid fa-paper-plane',
+    title: 'Event-Driven Messaging',
+    description:
+      'Apache Kafka and Avro messaging with the Transactional Outbox and sequential inbox patterns built in.',
+    to: '/docs/building-blocks/libraries',
+  },
+  {
+    icon: 'fa-solid fa-shield-halved',
+    title: 'Secure by Default',
+    description:
+      'OAuth2/OIDC resource-server security and client-side encryption of data-at-rest, ready to use.',
+    to: '/docs/building-blocks/spring-boot-starters',
+  },
+  {
+    icon: 'fa-solid fa-cubes',
+    title: 'Spring Boot Starters',
+    description:
+      'Drop-in auto-configuration for logging, monitoring, persistence, object storage, secrets and TLS.',
+    to: '/docs/building-blocks/spring-boot-starters',
+  },
+  {
+    icon: 'fa-solid fa-server',
+    title: 'Reusable Microservices',
+    description:
+      'Deploy ready-made service templates for error handling, process context & archive, message exchange and more.',
+    to: '/docs/building-blocks/reusable-microservices',
+  },
+  {
+    icon: 'fa-solid fa-cloud',
+    title: 'Open Source & Cloud Native',
+    description:
+      'Apache 2.0 licensed, built for AWS and OpenShift, with a CLI, Maven plugins and registries to match.',
+    to: '/docs/building-blocks/tooling',
+  },
+];
 
 function HomepageHeader() {
   const {siteConfig} = useDocusaurusContext();
   return (
-    <header className={clsx('hero hero--primary', styles.heroBanner)}>
+    <header className={clsx('hero', styles.heroBanner)}>
       <div className="container">
-        <Heading as="h1" className="hero__title">
+        <img
+          src="/img/logo.png"
+          alt="jEAP logo"
+          className={styles.heroLogo}
+          width={200}
+          height={200}
+        />
+        <Heading as="h1" className={styles.heroTitle}>
           {siteConfig.title}
         </Heading>
-        <p className="hero__subtitle">{siteConfig.tagline}</p>
-        <p className="hero__subtitle" style={{fontStyle: 'italic', opacity: 0.85}}>Coming soon...</p>
+        <p className={styles.heroTagline}>{siteConfig.tagline}</p>
+        <p className={styles.heroSubtitle}>
+          A suite of Spring Boot libraries, starters and reusable microservices that solve
+          the cross-functional concerns of enterprise applications — so your team can focus
+          on business logic.
+        </p>
         <div className={styles.buttons}>
-          <a
-            className="button button--secondary button--lg"
-            href="/docs/intro">
+          <Link className="button button--primary button--lg" to="/docs/what-is-jeap">
             Get Started
-          </a>
+          </Link>
+          <Link
+            className="button button--secondary button--lg"
+            to="https://github.com/jeap-admin-ch">
+            View on GitHub
+          </Link>
         </div>
       </div>
     </header>
+  );
+}
+
+function Feature({icon, title, description, to}) {
+  return (
+    <div className={clsx('col col--4', styles.featureCol)}>
+      <Link to={to} className={styles.featureCard}>
+        <span className={styles.featureIcon}>
+          <i className={icon} aria-hidden="true"></i>
+        </span>
+        <Heading as="h3" className={styles.featureTitle}>
+          {title}
+        </Heading>
+        <p className={styles.featureDescription}>{description}</p>
+      </Link>
+    </div>
   );
 }
 
@@ -32,39 +114,15 @@ export default function Home() {
   return (
     <Layout
       title={siteConfig.title}
-      description="jEAP - Java Enterprise Application Platform">
+      description="jEAP — Java Enterprise Application Platform: Spring Boot libraries, starters and reusable microservices for enterprise applications.">
       <HomepageHeader />
       <main>
         <section className={styles.features}>
           <div className="container">
             <div className="row">
-              <div className="col col--4">
-                <div className="text--center padding-horiz--md">
-                  <Heading as="h3">Platform Libraries</Heading>
-                  <p>
-                    A set of shared libraries and Spring Boot starters that accelerate
-                    the development of enterprise Java applications.
-                  </p>
-                </div>
-              </div>
-              <div className="col col--4">
-                <div className="text--center padding-horiz--md">
-                  <Heading as="h3">Best Practices</Heading>
-                  <p>
-                    Built-in support for messaging, security, monitoring, and
-                    other cross-cutting concerns following proven patterns.
-                  </p>
-                </div>
-              </div>
-              <div className="col col--4">
-                <div className="text--center padding-horiz--md">
-                  <Heading as="h3">Cloud Native</Heading>
-                  <p>
-                    Designed for cloud-native deployments on multiple platforms,
-                    supporting modern CI/CD workflows and observability.
-                  </p>
-                </div>
-              </div>
+              {FEATURES.map((feature) => (
+                <Feature key={feature.title} {...feature} />
+              ))}
             </div>
           </div>
         </section>

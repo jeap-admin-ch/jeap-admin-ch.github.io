@@ -7,6 +7,9 @@ build/
 .docusaurus/
 .cache-loader/
 
+### Documentation from jEAP repositories (assembled by scripts/clone-docs.sh + prepare-docs.sh) ###
+/docs/
+
 ### STS ###
 .apt_generated
 .classpath

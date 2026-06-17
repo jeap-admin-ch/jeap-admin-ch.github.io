@@ -1,0 +1,71 @@
+name: Surge preview
+description: Deploy or tear down a Surge.sh preview, deriving the preview name from the PR number or docs branch.
+
+inputs:
+  command:
+    description: 'What to do: "deploy" or "teardown".'
+    required: true
+  pr_number:
+    description: 'Pull request number. When set, the preview name is derived as pr-<number>; otherwise it is derived from docs_branch.'
+    required: false
+    default: ''
+  docs_branch:
+    description: 'Branch used for jEAP documentation sources. Used as the preview name when pr_number is not set.'
+    required: false
+    default: 'main'
+  build_dir:
+    description: 'Directory to deploy (only used for command=deploy).'
+    required: false
+    default: './build'
+  token:
+    description: 'Surge.sh token.'
+    required: true
+
+outputs:
+  domain:
+    description: 'The full Surge domain, e.g. pr-123-jeap-preview.surge.sh.'
+    value: ${{ steps.compute.outputs.domain }}
+  url:
+    description: 'The full preview URL, e.g. https://pr-123-jeap-preview.surge.sh.'
+    value: ${{ steps.compute.outputs.url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute preview name
+      id: compute
+      shell: bash
+      env:
+        PR_NUMBER: ${{ inputs.pr_number }}
+        DOCS_BRANCH: ${{ inputs.docs_branch }}
+      run: |
+        if [ -n "$PR_NUMBER" ]; then
+          RAW="pr-${PR_NUMBER}"
+        else
+          RAW="docs-${DOCS_BRANCH:-main}"
+        fi
+        # Sanitize: lowercase, replace non-alphanumeric with hyphens, collapse and trim
+        SANITIZED=$(echo "$RAW" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')
+        DOMAIN="${SANITIZED}-jeap-preview.surge.sh"
+        echo "Preview name: $SANITIZED"
+        {
+          echo "domain=$DOMAIN"
+          echo "url=https://$DOMAIN"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Deploy to Surge
+      if: inputs.command == 'deploy'
+      shell: bash
+      env:
+        BUILD_DIR: ${{ inputs.build_dir }}
+        DOMAIN: ${{ steps.compute.outputs.domain }}
+        SURGE_TOKEN: ${{ inputs.token }}
+      run: npx surge "$BUILD_DIR" "$DOMAIN" --token "$SURGE_TOKEN"
+
+    - name: Teardown Surge preview
+      if: inputs.command == 'teardown'
+      shell: bash
+      env:
+        DOMAIN: ${{ steps.compute.outputs.domain }}
+        SURGE_TOKEN: ${{ inputs.token }}
+      run: npx surge teardown "$DOMAIN" --token "$SURGE_TOKEN"

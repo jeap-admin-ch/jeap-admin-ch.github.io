@@ -7,6 +7,10 @@ cd "$SCRIPT_DIR"
 echo "==> Installing dependencies..."
 npm ci
 
+echo "==> Aggregating documentation from jEAP repos..."
+bash scripts/clone-docs.sh
+bash scripts/prepare-docs.sh
+
 echo "==> Building Docusaurus site..."
 npm run build
 
