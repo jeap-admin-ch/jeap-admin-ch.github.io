@@ -14,14 +14,18 @@ Aggregation is a two-step pipeline (kept as two scripts so each step can run ind
 
 | Script | Purpose |
 |---|---|
-| `scripts/clone-docs.sh` | **Clone** the configured jEAP repos and copy their `docs/` into this repo's `docs/` (the umbrella's general doc at the top level; library repos under `docs/<repo>/`). Raw content only. |
+| `scripts/clone-docs.sh` | **Clone** the jEAP repos and copy their `docs/` into this repo's `docs/`. Two sources: the static `REPOS` manifest (the umbrella's general doc at the top level) and **auto-discovery** — enumerating the GitHub org and pulling in every repo that ships a top-level `docs/` dir as its own section under `docs/<repo>/`, with the repo's `README.md` as the landing page. Raw content only. |
 | `scripts/prepare-docs.sh` | **Transform** the assembled `docs/` for the site: inject sidebar ordering, write category metadata, and rewrite links that are valid on GitHub but would break in Docusaurus. Operates in place, so it can also run on a `docs/` tree you copied in manually (skipping the clone step). |
 
-Both are configurable via environment variables (`REPO_BASE_URL`, `BRANCH`, `REPOS`, …) — see the header
-comment in each script. For example, to assemble from a local checkout on a feature branch:
+Both are configurable via environment variables — see the header comment in each script. `clone-docs.sh`
+reads `REPO_BASE_URL`, `BRANCH`, `REPOS`, `DOCS_DEST`, plus the auto-discovery settings `ORG`,
+`AUTODISCOVER` (`true`/`false`) and `EXCLUDE_REPOS` (repos to hold back). Auto-discovery uses the
+[`gh` CLI](https://cli.github.com/) and must be authenticated (in CI, `GH_TOKEN`); set `AUTODISCOVER=false`
+to run umbrella-only without `gh`. For example, to assemble from a local checkout on a feature branch
+(offline, no org enumeration):
 
 ```bash
-REPO_BASE_URL="file:///path/to/parentdir" BRANCH="feature/XYZ" REPOS="jeap-admin-ch:root" \
+REPO_BASE_URL="file:///path/to/parentdir" BRANCH="feature/XYZ" REPOS="jeap-admin-ch:root" AUTODISCOVER=false \
   bash scripts/clone-docs.sh
 bash scripts/prepare-docs.sh
 ```
@@ -70,7 +74,7 @@ workflow at `.github/workflows/deploy.yml`.
 The workflow:
 1. Checks out the repository
 2. Installs Node.js dependencies (`npm ci`)
-3. **Clones** the jEAP documentation sources (`scripts/clone-docs.sh`)
+3. **Clones** the jEAP documentation sources (`scripts/clone-docs.sh`, run with `GH_TOKEN` so auto-discovery can enumerate the org via `gh`)
 4. **Prepares** the aggregated docs for GitHub Pages (`scripts/prepare-docs.sh`)
 5. Builds the Docusaurus site (`npm run build`)
 6. Deploys the `build/` output to GitHub Pages

@@ -52,7 +52,7 @@
 #   # without auto-discovery. The umbrella repo's directory there is named
 #   # "jeap-admin-ch", so override REPOS:
 #   REPO_BASE_URL="file:///home/dev/IdeaProjects" \
-#   BRANCH="feature/JEAP-7069" \
+#   BRANCH="feature/JEAP-xxxx" \
 #   REPOS="jeap-admin-ch:root" \
 #   AUTODISCOVER=false \
 #     bash scripts/clone-docs.sh

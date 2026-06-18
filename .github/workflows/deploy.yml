@@ -39,7 +39,7 @@ jobs:
         run: bash scripts/clone-docs.sh
         env:
           REPO_BASE_URL: https://github.com/jeap-admin-ch
-          BRANCH: feature/JEAP-7069 # TODO JEAP-7069
+          BRANCH: main
           GH_TOKEN: ${{ github.token }}
 
       - name: Prepare documentation for GitHub Pages

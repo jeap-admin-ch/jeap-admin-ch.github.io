@@ -22,7 +22,11 @@ Raw npm scripts (`npm start` / `npm run build` / `npm run serve`) assume deps ar
 
 `docs/` is **generated and git-ignored** — never edit or commit files there; they are wiped and reassembled on every build. Two scripts run in sequence (split so each can run independently):
 
-1. `scripts/clone-docs.sh` — clones the configured jEAP repos (depth-1, branch tip) and copies their `docs/` trees into this repo's `docs/`. `root` placement copies to the top level; `nested` copies to `docs/<repo>/`. Default manifest is `jeap:root` (the umbrella repo's general doc). Env vars: `REPO_BASE_URL`, `BRANCH`, `REPOS`, `DOCS_DEST`.
+1. `scripts/clone-docs.sh` — assembles `docs/` from two sources:
+   - **The static `REPOS` manifest** — clones the configured repos (depth-1, branch tip) and copies their `docs/` trees in. `root` placement copies to the top level; `nested` copies to `docs/<repo>/`. Default manifest is `jeap:root` (the umbrella repo's general doc).
+   - **Auto-discovery** (on by default) — enumerates the GitHub org via the `gh` CLI and pulls in **every repo that ships a top-level `docs/` dir on `main`** as its own nested section (`docs/<repo>/`), using the repo's `README.md` as the section landing page (`index.md`). A repo that also ships its own `docs/index.md` has it demoted to `modules.md` to avoid colliding with the README-derived index. Auto-discovered repos are always cloned from `main`, regardless of `BRANCH`.
+
+   Env vars: `REPO_BASE_URL`, `BRANCH` (static manifest only), `REPOS`, `DOCS_DEST`, `ORG` (org to enumerate), `AUTODISCOVER` (`true`/`false`), `EXCLUDE_REPOS` (space-separated hold-back list, default `jeap-governance-service jeap-python-pipeline-lib`). Auto-discovery requires the `gh` CLI installed and authenticated (in CI, `GH_TOKEN`); with `AUTODISCOVER=false` it runs umbrella-only and needs no `gh`.
 2. `scripts/prepare-docs.sh` — transforms the assembled tree **in place** (idempotent): applies the umbrella's order manifest (`docs/_order`) to position top-level curated content — listed files get `sidebar_position`, listed folders a labelled `_category_.json` (whose `index.md` is the section landing page via the category index convention); auto-discovered repo sections sort after at position 100+; and it rewrites links valid on GitHub but broken in Docusaurus (`../README.md` → umbrella repo README; absolute site URLs → site-internal). The sidebar order thus lives **with the content in the umbrella repo** — add a section there by adding a line to `_order`, no change here. Because it operates in place, it can also run on a `docs/` tree copied in manually (skipping the clone).
 
    `docs/_order` format (shipped by the umbrella, one entry per line in display order; `#` comments and blanks ignored):
@@ -33,9 +37,9 @@ Raw npm scripts (`npm start` / `npm run build` / `npm run serve`) assume deps ar
    ```
    Each entry names a top-level file or folder; its line number is the sidebar position. `| Label` (optional) sets a folder's category label. A file that already ships its own front matter wins over the manifest. Without `_order`, top-level entries fall back to Docusaurus' alphabetical order.
 
-To assemble from a local checkout on a feature branch:
+To assemble from a local checkout on a feature branch (`AUTODISCOVER=false` keeps it offline — otherwise it would enumerate the real GitHub org via `gh`):
 ```bash
-REPO_BASE_URL="file:///path/to/parentdir" BRANCH="feature/XYZ" REPOS="jeap-admin-ch:root" \
+REPO_BASE_URL="file:///path/to/parentdir" BRANCH="feature/XYZ" REPOS="jeap-admin-ch:root" AUTODISCOVER=false \
   bash scripts/clone-docs.sh
 bash scripts/prepare-docs.sh
 ```
@@ -50,6 +54,6 @@ bash scripts/prepare-docs.sh
 
 ## Deployment
 
-Push to `main` → `.github/workflows/deploy.yml` runs the full pipeline (npm ci → clone-docs → prepare-docs → build → deploy to GitHub Pages). PRs get a preview via `pr-preview.yml` (torn down by `pr-preview-teardown.yml`).
+Push to `main` → `.github/workflows/deploy.yml` runs the full pipeline (npm ci → clone-docs → prepare-docs → build → deploy to GitHub Pages). The clone step runs with `GH_TOKEN: ${{ github.token }}` so its auto-discovery can enumerate the org via `gh`. PRs get a preview via `pr-preview.yml` (torn down by `pr-preview-teardown.yml`).
 
 See `README.md` for the full rationale and script env-var reference.
