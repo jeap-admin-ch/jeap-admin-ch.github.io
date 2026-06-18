@@ -108,13 +108,17 @@ set_position() {  # <relative-file> <position>
 
 # Write a folder's _category_.json (label + position). index.md inside the
 # folder stays the category landing page (no "link" key — index convention).
-write_category() {  # <dir> <label> <position>
-  local dir="$1" label="$2" pos="$3"
-  log "ordering: category $(basename "$dir") -> position $pos (label: $label)"
+# The optional <collapsed> arg (default "true") sets whether the category starts
+# collapsed in the sidebar; top-level categories pass "false" so they render
+# expanded initially.
+write_category() {  # <dir> <label> <position> [collapsed]
+  local dir="$1" label="$2" pos="$3" collapsed="${4:-true}"
+  log "ordering: category $(basename "$dir") -> position $pos (label: $label, collapsed: $collapsed)"
   cat > "$dir/_category_.json" <<JSON
 {
   "label": "$label",
-  "position": $pos
+  "position": $pos,
+  "collapsed": $collapsed
 }
 JSON
 }
@@ -142,7 +146,8 @@ if [ -f "$ORDER_FILE" ]; then
     name="${entry%.md}"                                  # tolerate a .md suffix
     if [ -d "$DOCS_DEST/$name" ]; then
       [ -n "$label" ] || label="$(printf '%s' "$name" | sed -E 's/[-_]/ /g; s/(^| )([a-z])/\1\U\2/g')"
-      write_category "$DOCS_DEST/$name" "$label" "$pos"
+      # Top-level categories render expanded by default (collapsed: false).
+      write_category "$DOCS_DEST/$name" "$label" "$pos" false
       MANIFEST_DIRS="$MANIFEST_DIRS $name"
     elif [ -f "$DOCS_DEST/$name.md" ]; then
       set_position "$name.md" "$pos"
