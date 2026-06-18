@@ -155,6 +155,96 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 1b. Categories — route the auto-discovered repo sections (step 2) into App
+#     Building Blocks subcategories instead of letting them sit flat at the top
+#     level. The mapping lives WITH the content in the umbrella's docs/_categories
+#     (see that file's header for the format): category lines (<folder> | <Label>)
+#     define the subcategories in sidebar order, routing lines (<repo> = <folder>)
+#     assign individual repos. Defaults for an unrouted repo: name contains
+#     "starter" -> spring-boot-starters, otherwise -> libraries. If the manifest
+#     is absent this is a no-op and repo sections fall back to flat placement.
+# ---------------------------------------------------------------------------
+BB_DIR="building-blocks"            # App Building Blocks folder (claimed by _order)
+CATEGORIES_FILE="$DOCS_DEST/_categories"
+ROUTES=""                            # space-separated "repo=folder" routing entries
+CAT_COUNTS=""                        # space-separated "folder=count" (per-category repo counter)
+CATEGORIES_ENABLED=0
+
+# Resolve a routing alias (the friendly names) to a category folder.
+resolve_alias() {  # <folder-or-alias>
+  case "$1" in
+    library)    printf 'libraries' ;;
+    starter)    printf 'spring-boot-starters' ;;
+    tool)       printf 'tooling' ;;
+    reusablems) printf 'reusable-microservices' ;;
+    *)          printf '%s' "$1" ;;
+  esac
+}
+
+# Category folder for a repo: explicit route > "starter" default > libraries.
+# Prints nothing when categories are disabled (flat fallback).
+category_for_repo() {  # <repo>
+  local repo="$1" entry
+  [ "$CATEGORIES_ENABLED" = "1" ] || return 0
+  for entry in $ROUTES; do
+    [ "${entry%%=*}" = "$repo" ] && { printf '%s' "${entry##*=}"; return 0; }
+  done
+  case "$repo" in
+    *starter*) printf 'spring-boot-starters' ;;
+    *)         printf 'libraries' ;;
+  esac
+}
+
+# Next sidebar position within a category (100, 110, … per folder), tracked in
+# CAT_COUNTS so each subcategory lists its repos in the order they are processed.
+next_cat_pos() {  # <folder>
+  local folder="$1" n=0 found=0 newlist="" tok
+  for tok in $CAT_COUNTS; do
+    if [ "${tok%%=*}" = "$folder" ]; then
+      n="${tok##*=}"; found=1; newlist="$newlist ${folder}=$((n + 1))"
+    else
+      newlist="$newlist $tok"
+    fi
+  done
+  [ "$found" = "1" ] || newlist="$newlist ${folder}=1"
+  CAT_COUNTS="$newlist"
+  printf '%s' "$((100 + n * 10))"
+}
+
+if [ -f "$CATEGORIES_FILE" ]; then
+  CATEGORIES_ENABLED=1
+  log "categories: applying manifest $CATEGORIES_FILE"
+  cat_pos=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%%#*}"
+    line="$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+    [ -n "$line" ] || continue
+    case "$line" in
+      *"|"*)                                            # category definition
+        folder="$(printf '%s' "$line" | sed -E 's/[[:space:]]*\|.*$//')"
+        label="$(printf '%s' "$line" | sed -E 's/^[^|]*\|[[:space:]]*//')"
+        cat_pos=$((cat_pos + 1))
+        cdir="$DOCS_DEST/$BB_DIR/$folder"
+        if [ ! -d "$cdir" ]; then
+          warn "categories: subcategory '$folder' has no folder under $BB_DIR — creating a stub landing page"
+          mkdir -p "$cdir"
+          printf '# %s\n' "$label" > "$cdir/index.md"
+        fi
+        write_category "$cdir" "$label" "$cat_pos"
+        ;;
+      *"="*)                                            # repo routing
+        repo="$(printf '%s' "$line" | sed -E 's/[[:space:]]*=.*$//')"
+        dest="$(resolve_alias "$(printf '%s' "$line" | sed -E 's/^[^=]*=[[:space:]]*//')")"
+        ROUTES="$ROUTES ${repo}=${dest}"
+        ;;
+      *)
+        warn "categories: ignoring unrecognized line '$line'"
+        ;;
+    esac
+  done < "$CATEGORIES_FILE"
+fi
+
+# ---------------------------------------------------------------------------
 # 2. Repo sections — process each auto-discovered repo folder (a top-level
 #    subfolder with an index.md that the order manifest did NOT claim). Folders
 #    are processed in alphabetical order so the sidebar lists repos A->Z;
@@ -167,13 +257,38 @@ fi
 #    loop reads from a process substitution (not a pipe) so repo_pos survives.
 # ---------------------------------------------------------------------------
 repo_pos=100
+MOVED_LINKS=""                        # "repo|docs/<new path>" entries for step 3b
 while IFS= read -r dir; do
   repo="$(basename "$dir")"
   # Skip folders the manifest already positioned (curated umbrella sections).
   case " $MANIFEST_DIRS " in *" $repo "*) continue ;; esac
   [ -f "$dir/index.md" ] || continue
 
-  log "repo section: $repo (position $repo_pos)"
+  # Route this repo into an App Building Blocks subcategory when the _categories
+  # manifest is present; otherwise leave it flat at the top level (positions
+  # 100+). Moving happens before the per-repo transforms so they run at the
+  # final location; the glob below was expanded up front, so the move is safe.
+  cat_folder="$(category_for_repo "$repo")"
+  if [ -n "$cat_folder" ]; then
+    catdir="$DOCS_DEST/$BB_DIR/$cat_folder"
+    if [ ! -f "$catdir/_category_.json" ]; then
+      # Routed to a category not declared in _categories — create + label it so
+      # the build stays valid (placed after the declared categories).
+      label="$(printf '%s' "$cat_folder" | sed -E 's/[-_]/ /g; s/(^| )([a-z])/\1\U\2/g')"
+      mkdir -p "$catdir"
+      [ -f "$catdir/index.md" ] || printf '# %s\n' "$label" > "$catdir/index.md"
+      write_category "$catdir" "$label" 90
+    fi
+    mv "$dir" "$catdir/$repo"
+    dir="$catdir/$repo"
+    pos="$(next_cat_pos "$cat_folder")"
+    MOVED_LINKS="$MOVED_LINKS ${repo}|docs/$BB_DIR/$cat_folder/$repo"
+  else
+    pos="$repo_pos"
+    repo_pos=$((repo_pos + 10))
+  fi
+
+  log "repo section: $repo (-> ${cat_folder:-<top level>}, position $pos)"
 
   # 2a. Truncate the README-derived landing page at its trailing boilerplate.
   #     Drops everything from the first Changes/Changelog/Note(s)/License heading
@@ -200,10 +315,9 @@ while IFS= read -r dir; do
   cat > "$dir/_category_.json" <<JSON
 {
   "label": "$repo",
-  "position": $repo_pos
+  "position": $pos
 }
 JSON
-  repo_pos=$((repo_pos + 10))
 done < <(printf '%s\n' "$DOCS_DEST"/*/ | LC_ALL=C sort)
 
 # ---------------------------------------------------------------------------
@@ -219,5 +333,21 @@ find "$DOCS_DEST" -type f -name '*.md' -print0 | while IFS= read -r -d '' f; do
     -e "s|\]\(${site_re}/|](/|g" \
     "$f"
 done
+
+# 3b. Routed-repo links — rewrite content links that point at a routed repo's
+#     old top-level path (/docs/<repo>) to its new nested path under
+#     building-blocks/<category>/. Runs after 3a (which has already folded
+#     absolute site URLs to /docs/<repo>). Keeps curated content decoupled from
+#     the routing: recategorizing a repo updates its inbound links for free.
+#     The trailing ([/)]) match covers both `/docs/<repo>/...` and `/docs/<repo>)`.
+if [ -n "$MOVED_LINKS" ]; then
+  log "links: rewriting routed repo paths (/docs/<repo> -> nested) in $DOCS_DEST"
+  for entry in $MOVED_LINKS; do
+    repo="${entry%%|*}"; newbase="${entry##*|}"
+    find "$DOCS_DEST" -type f -name '*.md' -print0 | while IFS= read -r -d '' f; do
+      sed -i -E "s|\]\(/docs/${repo}([/)])|](/${newbase}\1|g" "$f"
+    done
+  done
+fi
 
 log "prepare step complete for $DOCS_DEST"
