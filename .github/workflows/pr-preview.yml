@@ -9,7 +9,7 @@ on:
       docs_branch:
         description: 'Branch to use for jEAP documentation sources'
         required: false
-        default: 'feature/JEAP-7069' # TODO JEAP-7069
+        default: main
 
 permissions:
   contents: read
@@ -37,7 +37,7 @@ jobs:
         run: bash scripts/clone-docs.sh
         env:
           REPO_BASE_URL: https://github.com/jeap-admin-ch
-          BRANCH: ${{ inputs.docs_branch || 'feature/JEAP-7069' }} # TODO JEAP-7069
+          BRANCH: ${{ inputs.docs_branch || 'main' }}
           GH_TOKEN: ${{ github.token }}
 
       - name: Prepare documentation for GitHub Pages
@@ -58,7 +58,7 @@ jobs:
         with:
           command: deploy
           pr_number: ${{ github.event_name == 'pull_request' && github.event.pull_request.number || '' }}
-          docs_branch: ${{ inputs.docs_branch || 'feature/JEAP-7069' }} # TODO JEAP-7069
+          docs_branch: ${{ inputs.docs_branch || 'main' }}
           build_dir: ./build
           token: ${{ secrets.SURGE_TOKEN }}
 

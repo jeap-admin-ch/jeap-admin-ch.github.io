@@ -9,7 +9,7 @@ on:
       docs_branch:
         description: 'Branch used for jEAP documentation sources (must match the deployed preview)'
         required: false
-        default: 'feature/JEAP-7069' # TODO JEAP-7069
+        default: main
 
 permissions:
   pull-requests: write
@@ -37,7 +37,7 @@ jobs:
         with:
           command: teardown
           pr_number: ${{ github.event_name == 'pull_request' && github.event.pull_request.number || '' }}
-          docs_branch: ${{ inputs.docs_branch || 'feature/JEAP-7069' }} # TODO JEAP-7069
+          docs_branch: ${{ inputs.docs_branch || 'main' }}
           token: ${{ secrets.SURGE_TOKEN }}
 
       - name: Update PR comment
