@@ -98,9 +98,34 @@ const config = {
             title: 'Documentation',
             items: [
               {
-                label: 'Getting Started',
+                label: 'What is jEAP?',
                 to: '/docs/what-is-jeap',
               },
+              {
+                label: 'Using jEAP',
+                to: '/docs/using-jeap',
+              }
+            ],
+          },
+          {
+            title: 'Building Blocks',
+            items: [
+              {
+                label: 'Libraries',
+                to: '/docs/building-blocks/libraries',
+              },
+              {
+                label: 'Reusable Microservices',
+                to: '/docs/building-blocks/reusable-microservices',
+              },
+              {
+                label: 'Spring Boot Starters',
+                to: '/docs/building-blocks/spring-boot-starters',
+              },
+              {
+                label: 'Tooling & Registries',
+                to: '/docs/building-blocks/tooling',
+              }
             ],
           },
           {
