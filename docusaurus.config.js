@@ -30,7 +30,27 @@ const config = {
     locales: ['en'],
   },
 
-  themes: ['@docusaurus/theme-mermaid'],
+  themes: [
+    '@docusaurus/theme-mermaid',
+    // Offline / client-side search. Builds a search index at build time and
+    // serves it statically — no external service, no API keys, works on
+    // GitHub Pages. https://github.com/easyops-cn/docusaurus-search-local
+    [
+      '@easyops-cn/docusaurus-search-local',
+      /** @type {import('@easyops-cn/docusaurus-search-local').PluginOptions} */
+      ({
+        hashed: true,
+        language: ['en'],
+        indexDocs: true,
+        indexBlog: false,
+        indexPages: false,
+        docsRouteBasePath: '/docs',
+        highlightSearchTermsOnTargetPage: true,
+        searchBarShortcut: true,
+        searchBarPosition: 'auto',
+      }),
+    ],
+  ],
 
   plugins: [
     // Generates llms.txt and llms-full.txt from the docs/ tree (llmstxt.org
