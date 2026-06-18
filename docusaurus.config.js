@@ -9,10 +9,6 @@ const config = {
   url: 'https://jeap-admin-ch.github.io',
   baseUrl: '/',
 
-  headTags: process.env.NOINDEX
-    ? [{ tagName: 'meta', attributes: { name: 'robots', content: 'noindex, nofollow' } }]
-    : [],
-
   organizationName: 'jeap-admin-ch',
   projectName: 'jeap-admin-ch.github.io',
 

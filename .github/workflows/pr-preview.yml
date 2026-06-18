@@ -43,10 +43,8 @@ jobs:
       - name: Prepare documentation for GitHub Pages
         run: bash scripts/prepare-docs.sh
 
-      - name: Build site (noindex)
+      - name: Build site
         run: npm run build
-        env:
-          NOINDEX: 'true'
 
       - name: Add robots.txt to disallow all
         run: |
