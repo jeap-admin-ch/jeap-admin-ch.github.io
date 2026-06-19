@@ -38,7 +38,7 @@ const FEATURES = [
     icon: 'fa-solid fa-paper-plane',
     title: 'Event-Driven Messaging',
     description:
-        'Support for Event-driven Architecture is a first class ciziten in jEAP. Apache Kafka and Avro messaging with the Transactional Outbox and Sequential Inbox patterns built in, as well as compatibility checks enabling CI/CD.',
+        'Support for Event-driven Architecture is a first class citizen in jEAP. Apache Kafka and Avro messaging with the Transactional Outbox and Sequential Inbox patterns built in, as well as compatibility checks enabling CI/CD.',
     to: '/docs/building-blocks/libraries',
   },
   {

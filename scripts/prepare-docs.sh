@@ -306,11 +306,13 @@ while IFS= read -r dir; do
   #       docs/index.md -> ./modules.md  (collision rename done by clone-docs)
   #       docs/<x>.md   -> ./<x>.md      (sibling subpages)
   #       docs/images/  -> images/       (co-located assets; covers ![..](..))
+  #       ../X          -> GitHub blob   (links escaping docs/ to repo-root files)
   find "$dir" -type f -name '*.md' -print0 | while IFS= read -r -d '' f; do
     sed -i -E \
       -e 's|\]\(docs/index\.md\)|](./modules.md)|g' \
       -e 's|\]\(docs/([^)]+)\.md\)|](./\1.md)|g' \
       -e 's|\]\(docs/images/|](images/|g' \
+      -e "s|\\]\\(\\.\\./([^)]+)\\)|](https://github.com/jeap-admin-ch/${repo}/blob/main/\\1)|g" \
       "$f"
   done
 
@@ -336,6 +338,7 @@ find "$DOCS_DEST" -type f -name '*.md' -print0 | while IFS= read -r -d '' f; do
   sed -i -E \
     -e "s|\]\((\.\./)+README\.md\)|](${UMBRELLA_REPO_URL}#readme)|g" \
     -e "s|\]\(${site_re}/|](/|g" \
+    -e "s|<${site_re}(/[^>]+)>|[\1](\1)|g" \
     "$f"
 done
 
