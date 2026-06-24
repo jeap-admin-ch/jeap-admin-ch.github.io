@@ -302,15 +302,16 @@ while IFS= read -r dir; do
   sed -i -E '/^##[[:space:]]+([Cc]hangelog|[Cc]hange[[:space:]]+[Ll]og|[Cc]hanges?|[Nn]otes?|[Ll]icen[sc]e)([[:space:]].*)?$/,$d' \
     "$dir/index.md"
 
-  # 2b. Rewrite the README's links so they resolve after relocation:
+  # 2b. Rewrite the README's links so they resolve after relocation. A leading
+  #     `./` is optional so both `docs/x.md` and `./docs/x.md` are covered:
   #       docs/index.md -> ./modules.md  (collision rename done by clone-docs)
   #       docs/<x>.md   -> ./<x>.md      (sibling subpages)
   #       docs/images/  -> images/       (co-located assets; covers ![..](..))
   find "$dir" -type f -name '*.md' -print0 | while IFS= read -r -d '' f; do
     sed -i -E \
-      -e 's|\]\(docs/index\.md\)|](./modules.md)|g' \
-      -e 's|\]\(docs/([^)]+)\.md\)|](./\1.md)|g' \
-      -e 's|\]\(docs/images/|](images/|g' \
+      -e 's|\]\((\./)?docs/index\.md\)|](./modules.md)|g' \
+      -e 's|\]\((\./)?docs/([^)]+)\.md\)|](./\2.md)|g' \
+      -e 's|\]\((\./)?docs/images/|](images/|g' \
       "$f"
   done
 
