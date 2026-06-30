@@ -36,6 +36,11 @@
 #                       (relevant once cross-repo links exist; harmless today).
 #                  Intra-tree relative .md links are left untouched — they resolve
 #                  correctly because the directory structure is preserved 1:1.
+#                  Per repo section, a separate pass (run inside step 2) rewrites
+#                  relative links that point at source-repo files which are NOT
+#                  published as doc pages — links escaping docs/ via `..`, README
+#                  links to files/dirs outside docs/, or links to non-doc assets
+#                  (.sh/.conf/source) — into links to the file on GitHub.
 #
 # Configuration (environment variables):
 #   DOCS_DEST          Docs directory to transform. Default: <site-root>/docs
@@ -43,6 +48,9 @@
 #                      Default: https://github.com/jeap-admin-ch/jeap
 #   SITE_BASE_URL      Public site URL whose absolute links are folded to internal ones.
 #                      Default: https://jeap-admin-ch.github.io
+#   REPO_WEB_BASE_URL  GitHub org base URL the source repos live under; used to build
+#                      links to repository files that are not published as doc pages.
+#                      Default: https://github.com/jeap-admin-ch
 #
 # Example:
 #   bash scripts/prepare-docs.sh
@@ -55,6 +63,7 @@ SITE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DOCS_DEST="${DOCS_DEST:-$SITE_ROOT/docs}"
 UMBRELLA_REPO_URL="${UMBRELLA_REPO_URL:-https://github.com/jeap-admin-ch/jeap}"
 SITE_BASE_URL="${SITE_BASE_URL:-https://jeap-admin-ch.github.io}"
+REPO_WEB_BASE_URL="${REPO_WEB_BASE_URL:-https://github.com/jeap-admin-ch}"
 
 log()  { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
@@ -261,6 +270,72 @@ fi
 #    ordering identical regardless of the runner's locale (local vs CI). The
 #    loop reads from a process substitution (not a pipe) so repo_pos survives.
 # ---------------------------------------------------------------------------
+# Rewrite relative links in a repo section that point at source-repo files which
+# are NOT published as doc pages — links escaping docs/ via `..`, README links to
+# files/dirs outside docs/, links to non-doc assets (.sh/.conf/source) — into
+# links to the file in the public GitHub repository. Each link target is resolved
+# back to its path in the SOURCE repo (the README lands at the repo root; every
+# other page came from the repo's docs/, flattened up one level here), so the
+# GitHub URL points at the real file. Links that resolve to a file present in the
+# assembled section (other doc pages, co-located images) are left untouched.
+# Runs BEFORE the docs/ link normalization (2b) so it sees the original targets.
+# GitHub redirects /blob/main/<dir> -> /tree/main/<dir>, so one blob form serves
+# both files and directories.
+rewrite_repo_file_links() {  # <repo> <section-dir>
+  local repo="$1" section="${2%/}" f rel d repodir
+  while IFS= read -r -d '' f; do
+    rel="${f#"$section"/}"
+    case "$rel" in
+      index.md)   repodir="" ;;                       # from the repo's README.md (root)
+      modules.md) repodir="docs" ;;                   # from the repo's docs/index.md
+      *) d="$(dirname "$rel")"; [ "$d" = "." ] && repodir="docs" || repodir="docs/$d" ;;
+    esac
+    REPO="$repo" REPO_WEB_BASE="$REPO_WEB_BASE_URL" REPODIR="$repodir" SECTION="$section" \
+      perl -i -pe '
+BEGIN {
+  $repo = $ENV{REPO}; $webbase = $ENV{REPO_WEB_BASE};
+  $repodir = $ENV{REPODIR}; $section = $ENV{SECTION};
+  # Normalize <repodir>/<target> to a repo-root-relative path; undef if it
+  # escapes above the repo root (cannot be expressed as a repo file link).
+  sub norm {
+    my ($dir, $p) = @_;
+    my $c = $dir eq "" ? $p : "$dir/$p";
+    my @out;
+    for my $seg (split m{/}, $c) {
+      next if $seg eq "" || $seg eq ".";
+      if ($seg eq "..") { return undef unless @out; pop @out; }
+      else { push @out, $seg; }
+    }
+    return join("/", @out);
+  }
+  # Map a repo-root-relative path to its location in the assembled section, or
+  # "" when the repo path has no published page (lives outside docs/).
+  sub translate {
+    my ($r) = @_;
+    return "index.md"   if $r eq "README.md";
+    return "modules.md" if $r eq "docs/index.md";
+    return $1           if $r =~ m{^docs/(.+)$};
+    return "";
+  }
+  sub rw {
+    my ($url) = @_;
+    return $url if $url =~ m{^(?:[a-zA-Z][a-zA-Z0-9+.\-]*:|//|/|#)};  # scheme/root/anchor
+    my ($p, $suf) = $url =~ m{^([^#?]*)([#?].*)?$};
+    $suf = "" unless defined $suf;
+    return $url if $p eq "";
+    my $r = norm($repodir, $p);
+    return $url unless defined $r;
+    return $url if $r eq "";
+    my $a = translate($r);
+    return $url if $a ne "" && -e "$section/$a";       # resolves to a real file here
+    return "$webbase/$repo/blob/main/$r$suf";
+  }
+}
+s{\]\(([^)\s]+)((?:\s+[^)]*)?)\)}{"](" . rw($1) . $2 . ")"}ge;
+' "$f"
+  done < <(find "$section" -type f -name '*.md' -print0)
+}
+
 repo_pos=100
 MOVED_LINKS=""                        # "repo|docs/<new path>" entries for step 3b
 while IFS= read -r dir; do
@@ -301,6 +376,11 @@ while IFS= read -r dir; do
   #     would otherwise break the build.
   sed -i -E '/^##[[:space:]]+([Cc]hangelog|[Cc]hange[[:space:]]+[Ll]og|[Cc]hanges?|[Nn]otes?|[Ll]icen[sc]e)([[:space:]].*)?$/,$d' \
     "$dir/index.md"
+
+  # 2a-bis. Rewrite links to source-repo files that have no published doc page
+  #     (escaping docs/ via .., README links outside docs/, non-doc assets) to
+  #     point at the file on GitHub. Runs before 2b so it sees original targets.
+  rewrite_repo_file_links "$repo" "$dir"
 
   # 2b. Rewrite the README's links so they resolve after relocation. A leading
   #     `./` is optional so both `docs/x.md` and `./docs/x.md` are covered:
