@@ -43,6 +43,16 @@
 #                  (e.g. repos whose docs/ layout does not yet match the
 #                  authoritative jeap-spring-boot-jwe-starter shape).
 #                  Default: "jeap-governance-service jeap-python-pipeline-lib"
+#   LOCAL_REPOS    Space/newline separated list of paths to LOCAL repo checkouts.
+#                  Each is assembled from its working tree (uncommitted edits
+#                  included) instead of being cloned, and the same-named repo is
+#                  skipped during auto-discovery so the local copy wins. The
+#                  section name is the directory basename. Placement is detected
+#                  from the checkout: a top-level docs/_order file (the umbrella's
+#                  order manifest) means root placement; otherwise the repo is
+#                  placed as its own nested section (docs/<name>/), README as the
+#                  landing page — exactly like an auto-discovered repo.
+#                  Default: empty.
 #
 # Examples:
 #   # Production: umbrella doc + all auto-discovered repos from GitHub (main):
@@ -57,7 +67,49 @@
 #   AUTODISCOVER=false \
 #     bash scripts/clone-docs.sh
 #
+#   # Full site from GitHub, but one section served from a local checkout you are
+#   # editing (uncommitted edits visible), everything else auto-discovered:
+#   LOCAL_REPOS="../jeap-spring-boot-starters" bash scripts/clone-docs.sh
+#
 set -euo pipefail
+
+case "${1:-}" in
+  -h|--help)
+    cat <<'EOF'
+Usage: bash scripts/clone-docs.sh
+
+Step 1/2 of the docs pipeline: clone the jEAP source repos and assemble their
+docs/ trees into this site's docs/ directory. Configured entirely via environment
+variables (no flags). Run scripts/prepare-docs.sh afterwards.
+
+Environment variables (defaults in brackets):
+  REPO_BASE_URL   Base URL/prefix repos are cloned from.
+                  [https://github.com/jeap-admin-ch] (file:// for local testing)
+  BRANCH          Branch for the static REPOS manifest only. [main]
+  REPOS           Whitespace-separated "<name>:<placement>" manifest, placement
+                  root|nested. [jeap:root]
+  DOCS_DEST       Destination docs directory. [<site-root>/docs]
+  ORG             GitHub org to auto-discover repos from. [jeap-admin-ch]
+  AUTODISCOVER    true = enumerate the org and pull in every repo with a docs/
+                  dir; false = umbrella-only (offline, no gh CLI). [true]
+  EXCLUDE_REPOS   Space-separated repo names to hold back from auto-discovery.
+                  [jeap-governance-service jeap-python-pipeline-lib]
+  LOCAL_REPOS     Space-separated paths to LOCAL repo checkouts, assembled from
+                  their working tree (uncommitted edits included) instead of
+                  cloned; the same-named repo is skipped during auto-discovery so
+                  the local copy wins. Section name = directory basename; a
+                  checkout whose docs/ ships an _order manifest lands at the site
+                  root, others as nested sections. []
+
+Examples:
+  bash scripts/clone-docs.sh
+  LOCAL_REPOS="../jeap-spring-boot-starters" bash scripts/clone-docs.sh
+  REPO_BASE_URL="file:///home/dev/IdeaProjects" BRANCH="feature/X" \
+    REPOS="jeap-admin-ch:root" AUTODISCOVER=false bash scripts/clone-docs.sh
+EOF
+    exit 0
+    ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SITE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -69,6 +121,7 @@ DOCS_DEST="${DOCS_DEST:-$SITE_ROOT/docs}"
 ORG="${ORG:-jeap-admin-ch}"
 AUTODISCOVER="${AUTODISCOVER:-true}"
 EXCLUDE_REPOS="${EXCLUDE_REPOS:-jeap-governance-service jeap-python-pipeline-lib}"
+LOCAL_REPOS="${LOCAL_REPOS:-}"
 
 log()  { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
@@ -118,25 +171,15 @@ aggregate_one() {
   esac
 }
 
-# Auto-discovered repos are always cloned from main and placed as their own
-# nested section (docs/<repo>/). The repo's README.md becomes the section
-# landing page (index.md); the repo's docs/ contents become the subpages. A
-# repo that ships its own docs/index.md would collide with the README-derived
-# index.md, so the former is demoted to modules.md.
-aggregate_nested_repo() {
-  local name="$1"
-  local url="$REPO_BASE_URL/$name"
-  local checkout="$WORK_DIR/$name"
+# Place a repo checkout's docs/ as its own nested section (docs/<name>/). The
+# repo's README.md becomes the section landing page (index.md); the repo's docs/
+# contents become the subpages. A repo that ships its own docs/index.md would
+# collide with the README-derived index.md, so the former is demoted to
+# modules.md. Shared by auto-discovery (from a clone) and LOCAL_REPOS (from a
+# working-tree checkout).
+place_nested_from_checkout() {
+  local name="$1" checkout="$2"
   local dest="$DOCS_DEST/$name"
-
-  log "Cloning $name (main) from $url"
-  git clone --depth 1 --branch main "$url" "$checkout" \
-    || die "git clone failed for '$name' @ 'main' from $url"
-
-  if [ ! -d "$checkout/docs" ]; then
-    warn "$name has no docs/ directory — skipping"
-    return 0
-  fi
 
   log "Placing $name docs/ under $dest/ (README as landing page)"
   mkdir -p "$dest"
@@ -150,6 +193,43 @@ aggregate_nested_repo() {
     cp "$checkout/README.md" "$dest/index.md"
   else
     warn "$name has no README.md — section will have no landing page"
+  fi
+}
+
+# Auto-discovered repos are always cloned from main and placed as their own
+# nested section (docs/<repo>/) via place_nested_from_checkout.
+aggregate_nested_repo() {
+  local name="$1"
+  local url="$REPO_BASE_URL/$name"
+  local checkout="$WORK_DIR/$name"
+
+  log "Cloning $name (main) from $url"
+  git clone --depth 1 --branch main "$url" "$checkout" \
+    || die "git clone failed for '$name' @ 'main' from $url"
+
+  if [ ! -d "$checkout/docs" ]; then
+    warn "$name has no docs/ directory — skipping"
+    return 0
+  fi
+
+  place_nested_from_checkout "$name" "$checkout"
+}
+
+# Assemble a repo from a LOCAL checkout (working tree, uncommitted edits
+# included) instead of cloning it. The section name is the directory basename.
+# A top-level docs/_order file (the umbrella's order manifest) selects root
+# placement; otherwise the repo is placed as its own nested section.
+aggregate_local_repo() {
+  local path="$1"
+  [ -d "$path/docs" ] || die "LOCAL_REPOS entry '$path' has no docs/ directory"
+  local name; name="$(basename "$path")"
+
+  if [ -f "$path/docs/_order" ]; then
+    log "Placing LOCAL $name docs/ at the top level of $DOCS_DEST (working tree, incl. uncommitted changes)"
+    cp -R "$path/docs/." "$DOCS_DEST/"
+  else
+    log "Placing LOCAL $name docs/ as a nested section (working tree, incl. uncommitted changes)"
+    place_nested_from_checkout "$name" "$path"
   fi
 }
 
@@ -171,10 +251,41 @@ is_excluded() {
   return 1
 }
 
+# Is repo $1 provided by a LOCAL_REPOS checkout? (Matched by directory basename.)
+is_local() {
+  local needle="$1" path
+  for path in $LOCAL_REPOS; do
+    [ "$(basename "$path")" = "$needle" ] && return 0
+  done
+  return 1
+}
+
+# Does any LOCAL_REPOS checkout resolve to root placement (umbrella / _order)?
+# Such a local override replaces the default static root manifest clone.
+local_has_root=false
+for path in $LOCAL_REPOS; do
+  if [ -f "$path/docs/_order" ]; then
+    local_has_root=true
+    break
+  fi
+done
+
+# Local overrides first: a local root override (umbrella) replaces the static
+# root manifest clone below; nested locals are skipped during auto-discovery.
+for path in $LOCAL_REPOS; do
+  [ -n "$path" ] || continue
+  aggregate_local_repo "$path"
+done
+
 for entry in $REPOS; do
   name="${entry%%:*}"
   placement="${entry##*:}"
   [ -n "$name" ] || continue
+  # A local umbrella (root placement via _order) supersedes the static root clone.
+  if [ "$placement" = "root" ] && [ "$local_has_root" = "true" ]; then
+    log "Skipping static manifest '$name' (root docs provided by a LOCAL_REPOS checkout)"
+    continue
+  fi
   aggregate_one "$name" "$placement"
 done
 
@@ -201,6 +312,10 @@ if [ "$AUTODISCOVER" = "true" ]; then
       [ -n "$name" ] || continue
       case " $structural_skip " in *" $name "*) continue ;; esac
       in_static_manifest "$name" && continue
+      if is_local "$name"; then
+        log "Skipping $name (provided by a LOCAL_REPOS checkout)"
+        continue
+      fi
       if is_excluded "$name"; then
         log "Skipping $name (in EXCLUDE_REPOS)"
         continue

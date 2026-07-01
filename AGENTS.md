@@ -10,13 +10,19 @@ The Docusaurus 3 **site** for the jEAP (Java Enterprise Application Platform) do
 
 ```bash
 ./dev.sh         # Install deps + clone docs from repos + dev server (localhost:3000, hot reload)
-./dev-local.sh   # Like dev.sh but copies docs/ from a LOCAL jeap-admin-ch checkout (uncommitted edits visible)
 ./preview.sh     # Install deps + clone docs + production build (build/) + serve — closest to deployed result, fails on broken links
 ```
 
 Raw npm scripts (`npm start` / `npm run build` / `npm run serve`) assume deps are installed and `docs/` is already assembled — the shell scripts above wrap aggregation + Docusaurus together. There are **no tests or linters** in this project.
 
-`./dev-local.sh [path]` defaults to `../jeap-admin-ch` (override with arg or `$JEAP_ADMIN_CH_DIR`). Use it to preview docs you are editing in a sibling checkout without committing first — a normal clone only sees committed content. Re-run it to pick up further edits.
+Both `dev.sh` and `preview.sh` accept `--local <path>` (repeatable) and `--no-autodiscover`:
+
+```bash
+./dev.sh --local ../jeap-spring-boot-starters              # full site, that section served from your LOCAL working tree
+./dev.sh --local ../jeap-admin-ch --no-autodiscover        # umbrella-only, umbrella served from local (offline)
+```
+
+`--local <path>` serves a repo's docs from a **local checkout** (working tree, uncommitted edits included) instead of cloning it from GitHub; everything else is still cloned/auto-discovered as usual, so the overridden repo's local copy wins. The section name is the directory basename; a checkout whose `docs/` ships an `_order` manifest (the umbrella) is placed at the site root, any other repo as its own nested section. `--no-autodiscover` skips GitHub org auto-discovery, assembling only the umbrella plus any `--local` repos — but the umbrella is **still cloned from GitHub** unless you also pass a `--local` umbrella checkout (then it's fully GitHub-free). Re-run to pick up further edits.
 
 ## The docs aggregation pipeline (the core mechanic)
 
@@ -26,7 +32,7 @@ Raw npm scripts (`npm start` / `npm run build` / `npm run serve`) assume deps ar
    - **The static `REPOS` manifest** — clones the configured repos (depth-1, branch tip) and copies their `docs/` trees in. `root` placement copies to the top level; `nested` copies to `docs/<repo>/`. Default manifest is `jeap:root` (the umbrella repo's general doc).
    - **Auto-discovery** (on by default) — enumerates the GitHub org via the `gh` CLI and pulls in **every repo that ships a top-level `docs/` dir on `main`** as its own nested section (`docs/<repo>/`), using the repo's `README.md` as the section landing page (`index.md`). A repo that also ships its own `docs/index.md` has it demoted to `modules.md` to avoid colliding with the README-derived index. Auto-discovered repos are always cloned from `main`, regardless of `BRANCH`.
 
-   Env vars: `REPO_BASE_URL`, `BRANCH` (static manifest only), `REPOS`, `DOCS_DEST`, `ORG` (org to enumerate), `AUTODISCOVER` (`true`/`false`), `EXCLUDE_REPOS` (space-separated hold-back list, default `jeap-governance-service jeap-python-pipeline-lib`). Auto-discovery requires the `gh` CLI installed and authenticated (in CI, `GH_TOKEN`); with `AUTODISCOVER=false` it runs umbrella-only and needs no `gh`.
+   Env vars: `REPO_BASE_URL`, `BRANCH` (static manifest only), `REPOS`, `DOCS_DEST`, `ORG` (org to enumerate), `AUTODISCOVER` (`true`/`false`), `EXCLUDE_REPOS` (space-separated hold-back list, default `jeap-governance-service jeap-python-pipeline-lib`), `LOCAL_REPOS` (space-separated paths to local repo checkouts assembled from their working tree instead of cloned; the same-named repo is skipped during auto-discovery so the local copy wins — this is what backs the `--local` flag). Auto-discovery requires the `gh` CLI installed and authenticated (in CI, `GH_TOKEN`); with `AUTODISCOVER=false` it runs umbrella-only and needs no `gh`.
 2. `scripts/prepare-docs.sh` — transforms the assembled tree **in place** (idempotent): applies the umbrella's order manifest (`docs/_order`) to position top-level curated content — listed files get `sidebar_position`, listed folders a labelled `_category_.json` (whose `index.md` is the section landing page via the category index convention); auto-discovered repo sections sort after at position 100+; a `getting-started` page (file or folder) is pinned first *within its section* tree-wide (`sidebar_position: 0`, forced over source front matter), so every documented repo that ships one shows it as its first sidebar entry; and it rewrites links valid on GitHub but broken in Docusaurus (`../README.md` → umbrella repo README; absolute site URLs → site-internal; links to source-repo files that have no published doc page — escaping `docs/` via `..`, README links to files/dirs outside `docs/`, non-doc assets — → the file on GitHub, base `REPO_WEB_BASE_URL`). The sidebar order thus lives **with the content in the umbrella repo** — add a section there by adding a line to `_order`, no change here. Because it operates in place, it can also run on a `docs/` tree copied in manually (skipping the clone).
 
    `docs/_order` format (shipped by the umbrella, one entry per line in display order; `#` comments and blanks ignored):
