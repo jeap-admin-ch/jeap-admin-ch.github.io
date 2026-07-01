@@ -15,7 +15,7 @@ Aggregation is a two-step pipeline (kept as two scripts so each step can run ind
 | Script | Purpose |
 |---|---|
 | `scripts/clone-docs.sh` | **Clone** the jEAP repos and copy their `docs/` into this repo's `docs/`. Two sources: the static `REPOS` manifest (the umbrella's general doc at the top level) and **auto-discovery** — enumerating the GitHub org and pulling in every repo that ships a top-level `docs/` dir as its own section under `docs/<repo>/`, with the repo's `README.md` as the landing page. Raw content only. |
-| `scripts/prepare-docs.sh` | **Transform** the assembled `docs/` for the site: inject sidebar ordering, write category metadata, and rewrite links that are valid on GitHub but would break in Docusaurus. Operates in place, so it can also run on a `docs/` tree you copied in manually (skipping the clone step). |
+| `scripts/prepare-docs.sh` | **Transform** the assembled `docs/` for the site: inject sidebar ordering (including pinning a `getting-started` page first within its section), write category metadata, and rewrite links that are valid on GitHub but would break in Docusaurus. Operates in place, so it can also run on a `docs/` tree you copied in manually (skipping the clone step). |
 
 Both are configurable via environment variables — see the header comment in each script. `clone-docs.sh`
 reads `REPO_BASE_URL`, `BRANCH`, `REPOS`, `DOCS_DEST`, plus the auto-discovery settings `ORG`,

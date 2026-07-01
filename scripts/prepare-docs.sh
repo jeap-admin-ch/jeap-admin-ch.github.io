@@ -19,6 +19,13 @@
 #                  front matter are left untouched. See the section-1 banner
 #                  below for the manifest format.
 #
+#                  A "Getting started" page is pinned FIRST within its section,
+#                  tree-wide: any getting-started.md (or getting-started/ folder)
+#                  gets sidebar_position 0, so every documented repo that ships
+#                  one shows it as its first sidebar entry (unpositioned siblings
+#                  follow alphabetically). Forced, so it wins over source-shipped
+#                  front matter too.
+#
 #   2. Repo sections  For each auto-discovered repo section (a top-level subfolder
 #                  with an index.md, assembled by clone-docs.sh from a repo's
 #                  README + docs/): truncates the README at its trailing
@@ -113,6 +120,31 @@ set_position() {  # <relative-file> <position>
     cat "$f"
   } > "$tmp"
   mv "$tmp" "$f"
+}
+
+# Pin a page to a sidebar position, FORCING it even when the file
+# already ships front matter (unlike set_position, which yields to source front
+# matter). Replaces an existing sidebar_position inside the first front-matter
+# block, inserts one when the block lacks it, or prepends a block when absent.
+force_position() {  # <relative-file> <position>
+  local rel="$1" pos="$2"
+  local f="$DOCS_DEST/$rel"
+  [ -f "$f" ] || { warn "ordering: $rel not present — skipping"; return 0; }
+  log "ordering: pinning sidebar_position=$pos on $rel"
+  if [ "$(head -n 1 "$f")" = "---" ]; then
+    POS="$pos" perl -0777 -i -pe '
+      s{\A(---\n)(.*?\n)(---\n)}{
+        my ($open, $body, $close) = ($1, $2, $3);
+        $body =~ s/^sidebar_position:.*\n/"sidebar_position: $ENV{POS}\n"/me
+          or $body = "sidebar_position: $ENV{POS}\n" . $body;
+        $open . $body . $close;
+      }se;
+    ' "$f"
+  else
+    local tmp; tmp="$(mktemp)"
+    { printf -- '---\nsidebar_position: %s\n---\n\n' "$pos"; cat "$f"; } > "$tmp"
+    mv "$tmp" "$f"
+  fi
 }
 
 # Write a folder's _category_.json (label + position). index.md inside the
@@ -405,6 +437,23 @@ while IFS= read -r dir; do
 }
 JSON
 done < <(printf '%s\n' "$DOCS_DEST"/*/ | LC_ALL=C sort)
+
+# ---------------------------------------------------------------------------
+# 2d. Pin "Getting started" first within its section — applied tree-wide, so
+#     every documented repo section (and any curated folder) that ships a
+#     getting-started page shows it as its first entry. A sidebar_position of 0
+#     wins the top slot; unpositioned siblings fall to Docusaurus' alphabetical
+#     order after it (lodash orderBy sorts a missing position as undefined =
+#     last). Forced, so it beats source-shipped front matter too. Covers both a
+#     getting-started.md page and a getting-started/ subsection.
+# ---------------------------------------------------------------------------
+log "ordering: pinning getting-started pages first within their sections"
+while IFS= read -r -d '' f; do
+  force_position "${f#"$DOCS_DEST"/}" 0
+done < <(find "$DOCS_DEST" -type f -name 'getting-started.md' -print0)
+while IFS= read -r -d '' d; do
+  write_category "$d" "Getting Started" 0
+done < <(find "$DOCS_DEST" -type d -name 'getting-started' -print0)
 
 # ---------------------------------------------------------------------------
 # 3. Link rewriting — applied to every Markdown file. Uses '|' as the sed
