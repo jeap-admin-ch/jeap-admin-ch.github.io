@@ -64,6 +64,32 @@
 #
 set -euo pipefail
 
+case "${1:-}" in
+  -h|--help)
+    cat <<'EOF'
+Usage: bash scripts/prepare-docs.sh
+
+Step 2/2 of the docs pipeline: transform an already-assembled docs/ tree IN PLACE
+so it renders correctly on the Docusaurus site (sidebar ordering, category
+metadata, link rewriting). Idempotent. Configured via environment variables (no
+flags). Run scripts/clone-docs.sh first (or copy a docs/ tree in manually).
+
+Environment variables (defaults in brackets):
+  DOCS_DEST          Docs directory to transform. [<site-root>/docs]
+  UMBRELLA_REPO_URL  Umbrella repo URL, target for ../README.md links.
+                     [https://github.com/jeap-admin-ch/jeap]
+  SITE_BASE_URL      Public site URL whose absolute links are folded to internal.
+                     [https://jeap-admin-ch.github.io]
+  REPO_WEB_BASE_URL  GitHub org base URL for links to non-published repo files.
+                     [https://github.com/jeap-admin-ch]
+
+Example:
+  bash scripts/prepare-docs.sh
+EOF
+    exit 0
+    ;;
+esac
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SITE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
