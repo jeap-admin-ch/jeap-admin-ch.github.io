@@ -13,7 +13,16 @@ The Docusaurus 3 **site** for the jEAP (Java Enterprise Application Platform) do
 ./preview.sh     # Install deps + clone docs + production build (build/) + serve — closest to deployed result, fails on broken links
 ```
 
-Raw npm scripts (`npm start` / `npm run build` / `npm run serve`) assume deps are installed and `docs/` is already assembled — the shell scripts above wrap aggregation + Docusaurus together. `npm test` runs the component tests (Vitest + Testing Library, `src/**/*.test.{js,jsx}`, config in `vitest.config.mjs`); CI runs them before every build. There are **no linters** in this project.
+Raw npm scripts (`npm start` / `npm run build` / `npm run serve`) assume deps are installed and `docs/` is already assembled — the shell scripts above wrap aggregation + Docusaurus together. There are **no linters** in this project.
+
+`npm test` runs both test suites and is what CI runs before every build:
+
+| Command | What it covers |
+|---|---|
+| `npm run test:components` | React components (Vitest + Testing Library, `src/**/*.test.{js,jsx}`, config in `vitest.config.mjs`) |
+| `npm run test:scripts` | The docs pipeline scripts (`tests/scripts/*.test.sh`, plain bash — no extra deps) |
+
+The script tests drive the **real** `scripts/*.sh` against fixture trees in a temp directory (`clone-docs.sh` is pointed at throwaway local git repos via `REPO_BASE_URL="file://…"` with `AUTODISCOVER=false`, so nothing hits the network or needs `gh`). The rewrite rules are never re-implemented in the tests, so a test can only pass if the script itself behaves as asserted. Run one suite with `bash tests/scripts/run.sh prepare`. **Change a rewrite rule in `prepare-docs.sh` and you must update or extend `tests/scripts/prepare-docs-links.test.sh`** — those regexes are the pipeline's most breakage-prone part, and a wrong rule surfaces only as a broken link in some unrelated repo's section days later.
 
 Both `dev.sh` and `preview.sh` accept `--local <path>` (repeatable) and `--no-autodiscover`:
 
