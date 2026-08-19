@@ -269,7 +269,11 @@ category_for_repo() {  # <repo>
 
 # Next sidebar position within a category (100, 110, … per folder), tracked in
 # CAT_COUNTS so each subcategory lists its repos in the order they are processed.
-next_cat_pos() {  # <folder>
+# The position is returned in the global CAT_POS instead of being printed: a
+# caller reading it through a command substitution would run the whole function
+# in a subshell, discarding the CAT_COUNTS update and handing every repo in a
+# category the same position.
+next_cat_pos() {  # <folder> -> CAT_POS
   local folder="$1" n=0 found=0 newlist="" tok
   for tok in $CAT_COUNTS; do
     if [ "${tok%%=*}" = "$folder" ]; then
@@ -280,7 +284,7 @@ next_cat_pos() {  # <folder>
   done
   [ "$found" = "1" ] || newlist="$newlist ${folder}=1"
   CAT_COUNTS="$newlist"
-  printf '%s' "$((100 + n * 10))"
+  CAT_POS="$((100 + n * 10))"
 }
 
 if [ -f "$CATEGORIES_FILE" ]; then
@@ -419,7 +423,7 @@ while IFS= read -r dir; do
     fi
     mv "$dir" "$catdir/$repo"
     dir="$catdir/$repo"
-    pos="$(next_cat_pos "$cat_folder")"
+    next_cat_pos "$cat_folder"; pos="$CAT_POS"
     MOVED_LINKS="$MOVED_LINKS ${repo}|docs/$BB_DIR/$cat_folder/$repo"
   else
     pos="$repo_pos"
