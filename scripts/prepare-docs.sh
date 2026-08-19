@@ -441,14 +441,19 @@ while IFS= read -r dir; do
   rewrite_repo_file_links "$repo" "$dir"
 
   # 2b. Rewrite the README's links so they resolve after relocation. A leading
-  #     `./` is optional so both `docs/x.md` and `./docs/x.md` are covered:
-  #       docs/index.md -> ./modules.md  (collision rename done by clone-docs)
-  #       docs/<x>.md   -> ./<x>.md      (sibling subpages)
-  #       docs/images/  -> images/       (co-located assets; covers ![..](..))
+  #     `./` is optional so both `docs/x.md` and `./docs/x.md` are covered, and a
+  #     trailing `#anchor` is carried across so a README may deep-link into a page:
+  #       docs/index.md      -> ./modules.md   (collision rename done by clone-docs)
+  #       docs/<x>.md        -> ./<x>.md       (sibling subpages)
+  #       docs/<x>.md#<a>    -> ./<x>.md#<a>   (same, keeping the anchor)
+  #       docs/images/       -> images/        (co-located assets; covers ![..](..))
+  #     The target is matched with [^)#]+ rather than [^)]+ so the fragment cannot be
+  #     swallowed into the file name; without the optional group such a link stayed
+  #     unrewritten and resolved to a path that does not exist on the site.
   find "$dir" -type f -name '*.md' -print0 | while IFS= read -r -d '' f; do
     sed -i -E \
-      -e 's|\]\((\./)?docs/index\.md\)|](./modules.md)|g' \
-      -e 's|\]\((\./)?docs/([^)]+)\.md\)|](./\2.md)|g' \
+      -e 's|\]\((\./)?docs/index\.md(#[^)]*)?\)|](./modules.md\2)|g' \
+      -e 's|\]\((\./)?docs/([^)#]+)\.md(#[^)]*)?\)|](./\2.md\3)|g' \
       -e 's|\]\((\./)?docs/images/|](images/|g' \
       "$f"
   done
