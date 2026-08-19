@@ -10,7 +10,9 @@
     "deploy": "docusaurus deploy",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
-    "test": "vitest run"
+    "test": "npm run test:components && npm run test:scripts",
+    "test:components": "vitest run",
+    "test:scripts": "bash tests/scripts/run.sh"
   },
   "dependencies": {
     "@docusaurus/core": "3.10.1",
