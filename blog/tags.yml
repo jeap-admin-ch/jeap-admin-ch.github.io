@@ -1,0 +1,6 @@
+announcement:
+  label: Announcement
+  description: Announcements about new jEAP releases and features.
+release:
+  label: Release
+  description: jEAP release notes and version highlights.
