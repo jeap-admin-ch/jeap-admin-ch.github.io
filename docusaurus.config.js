@@ -76,7 +76,22 @@ const config = {
             return defaultSidebarItemsGenerator(args);
           },
         },
-        blog: false,
+        blog: {
+          path: 'blog',
+          blogTitle: 'jEAP Blog',
+          blogDescription: 'News, announcements and insights about the Java Enterprise Application Platform.',
+          postsPerPage: 10,
+          blogSidebarTitle: 'All posts',
+          blogSidebarCount: 'ALL',
+          showReadingTime: true,
+          feedOptions: {
+            type: ['rss', 'atom'],
+            xslt: true,
+          },
+          onInlineTags: 'warn',
+          onInlineAuthors: 'warn',
+          onUntruncatedBlogPosts: 'warn',
+        },
         theme: {
           customCss: './src/css/custom.css',
         },
@@ -99,6 +114,21 @@ const config = {
             sidebarId: 'defaultSidebar',
             position: 'left',
             label: 'Documentation',
+          },
+          {
+            to: '/blog',
+            label: 'Blog',
+            position: 'left',
+          },
+          {
+            href: 'pathname:///blog/rss.xml',
+            label: 'Subscribe (RSS)',
+            position: 'left',
+          },
+          {
+            href: 'pathname:///blog/atom.xml',
+            label: 'Subscribe (Atom)',
+            position: 'left',
           },
           {
             href: 'https://github.com/jeap-admin-ch',
