@@ -121,16 +121,6 @@ const config = {
             position: 'left',
           },
           {
-            href: 'pathname:///blog/rss.xml',
-            label: 'Subscribe (RSS)',
-            position: 'left',
-          },
-          {
-            href: 'pathname:///blog/atom.xml',
-            label: 'Subscribe (Atom)',
-            position: 'left',
-          },
-          {
             href: 'https://github.com/jeap-admin-ch',
             label: 'GitHub',
             position: 'right',
@@ -172,6 +162,23 @@ const config = {
                 label: 'Tooling & Registries',
                 to: '/docs/building-blocks/tooling',
               }
+            ],
+          },
+          {
+            title: 'Blog',
+            items: [
+              {
+                label: 'All posts',
+                to: '/blog',
+              },
+              {
+                label: 'Subscribe (RSS)',
+                href: 'pathname:///blog/rss.xml',
+              },
+              {
+                label: 'Subscribe (Atom)',
+                href: 'pathname:///blog/atom.xml',
+              },
             ],
           },
           {

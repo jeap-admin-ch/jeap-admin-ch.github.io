@@ -3,6 +3,7 @@ slug: welcome-to-the-jeap-blog
 title: Welcome to the jEAP Blog
 authors: [jeap-team]
 tags: [announcement]
+internal_sync: false
 ---
 
 Welcome to the jEAP blog! This is where we'll share announcements, release

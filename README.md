@@ -73,6 +73,42 @@ watches the copied `docs/`, so re-run the script to pick up further edits.
 ./preview.sh --local ../jeap-spring-boot-starters     # same, with the production broken-link check
 ```
 
+## Blog
+
+The site includes a Docusaurus blog at `/blog`, backed by Markdown files in `blog/` (unlike `docs/`, this
+directory **is** committed to this repo).
+
+To add a post, create a new `blog/YYYY-MM-DD-slug.md` file with front matter, e.g.:
+
+```md
+---
+slug: my-post-slug
+title: My Post Title
+authors: [jeap-team]
+tags: [announcement]
+---
+
+Short teaser shown on the blog list page.
+
+<!-- truncate -->
+
+Full post content below the fold.
+---
+```
+
+* `authors` references an entry in `blog/authors.yml`; `tags` references entries in `blog/tags.yml` -
+  add new authors/tags there as needed.
+* `slug` is required (not just derived from the filename) and should remain stable once published.
+* RSS and Atom feeds are generated automatically (`blog/rss.xml`, `blog/atom.xml`) and linked from the
+  blog sidebar and the site footer under "Blog".
+
+### Publishing release announcements automatically
+
+Release blog posts for jEAP repositories are not written by hand. For repositories set up to do so (e.g.
+`jeap-spring-boot-parent`), a GitHub Actions workflow (`publish-public-blogpost.yml` in that repository)
+runs on every push to `main` and, based on the latest `CHANGELOG.md` entry, commits a new post directly to
+this repository's `blog/` directory - the run is a no-op if a post for that version already exists.
+
 ## Tests
 
 `npm test` runs both suites; CI runs it before every build (deploy and PR preview alike).
@@ -121,6 +157,7 @@ The workflow:
 │   ├── clone-docs.sh              # Step 1: clone source repos, assemble docs/
 │   └── prepare-docs.sh            # Step 2: transform docs/ for the site
 ├── docs/                          # Documentation from jEAP repositories (git-ignored; do not edit)
+├── blog/                          # Blog posts (committed; see "Blog" section above)
 ├── src/
 │   ├── css/custom.css             # Custom theme styles
 │   ├── pages/                     # Custom React pages (home page)
