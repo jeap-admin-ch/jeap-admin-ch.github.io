@@ -98,6 +98,13 @@ UMBRELLA_REPO_URL="${UMBRELLA_REPO_URL:-https://github.com/jeap-admin-ch/jeap}"
 SITE_BASE_URL="${SITE_BASE_URL:-https://jeap-admin-ch.github.io}"
 REPO_WEB_BASE_URL="${REPO_WEB_BASE_URL:-https://github.com/jeap-admin-ch}"
 
+# JME (jEAP Microservice Examples) section, assembled by clone-docs.sh under
+# DOCS_DEST/JME_DIR as README-only nested repo sections. Must match clone-docs.sh's
+# JME_DIR/JME_ORG for the section to be found and its links rewritten correctly.
+JME_DIR="${JME_DIR:-jme-examples}"
+JME_ORG="${JME_ORG:-jme-admin-ch}"
+JME_REPO_WEB_BASE_URL="${JME_REPO_WEB_BASE_URL:-https://github.com/$JME_ORG}"
+
 log()  { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -195,6 +202,7 @@ JSON
 MANIFEST_DIRS=""
 
 ORDER_FILE="$DOCS_DEST/_order"
+pos=0
 if [ -f "$ORDER_FILE" ]; then
   log "ordering: applying manifest $ORDER_FILE"
   pos=0
@@ -224,6 +232,32 @@ if [ -f "$ORDER_FILE" ]; then
   done < "$ORDER_FILE"
 else
   warn "ordering: no manifest at $ORDER_FILE — top-level entries fall back to Docusaurus' default (alphabetical) order"
+fi
+
+# ---------------------------------------------------------------------------
+# 1c. JME Examples — a dedicated top-level category (jme-examples/) for the
+#     JME (jEAP Microservice Examples) repos assembled by clone-docs.sh's JME
+#     auto-discovery pass. Sorted after the _order manifest's own entries, right
+#     before the flat/auto-discovered jeap-admin-ch repo sections. The landing
+#     page is generated here (there is no umbrella README to reuse — the JME
+#     umbrella repo is intentionally excluded) and simply lists the repos found.
+# ---------------------------------------------------------------------------
+if [ -d "$DOCS_DEST/$JME_DIR" ]; then
+  log "JME: labelling section $JME_DIR and generating its landing page"
+  jme_pos=$((pos + 1))
+  write_category "$DOCS_DEST/$JME_DIR" "JME Examples" "$jme_pos" false
+  MANIFEST_DIRS="$MANIFEST_DIRS $JME_DIR"
+
+  {
+    printf '# JME Examples\n\n'
+    printf 'JME (jEAP Microservice Examples) example projects, sourced from the\n'
+    printf '[%s](%s) GitHub organization.\n\n' "$JME_ORG" "$JME_REPO_WEB_BASE_URL"
+    while IFS= read -r rdir; do
+      rname="$(basename "$rdir")"
+      [ -f "$rdir/index.md" ] || continue
+      printf -- '- [%s](./%s/)\n' "$rname" "$rname"
+    done < <(printf '%s\n' "$DOCS_DEST/$JME_DIR"/*/ | LC_ALL=C sort)
+  } > "$DOCS_DEST/$JME_DIR/index.md"
 fi
 
 # ---------------------------------------------------------------------------
@@ -472,6 +506,45 @@ while IFS= read -r dir; do
 }
 JSON
 done < <(printf '%s\n' "$DOCS_DEST"/*/ | LC_ALL=C sort)
+
+# ---------------------------------------------------------------------------
+# 2e. JME repo sections — same per-repo transforms as step 2, applied to each
+#     repo nested one level under $JME_DIR (docs/$JME_DIR/<repo>/). Kept as a
+#     separate loop rather than folded into step 2's top-level glob, since JME
+#     repos sit one directory deeper and use JME_REPO_WEB_BASE_URL (a different
+#     org) for their non-published-file GitHub links.
+# ---------------------------------------------------------------------------
+if [ -d "$DOCS_DEST/$JME_DIR" ]; then
+  jme_repo_pos=100
+  while IFS= read -r dir; do
+    repo="$(basename "$dir")"
+    [ -f "$dir/index.md" ] || continue
+    pos="$jme_repo_pos"
+    jme_repo_pos=$((jme_repo_pos + 10))
+
+    log "JME repo section: $repo (position $pos)"
+
+    sed -i -E '/^##[[:space:]]+([Cc]hangelog|[Cc]hange[[:space:]]+[Ll]og|[Cc]hanges?|[Nn]otes?|[Ll]icen[sc]e)([[:space:]].*)?$/,$d' \
+      "$dir/index.md"
+
+    REPO_WEB_BASE_URL="$JME_REPO_WEB_BASE_URL" rewrite_repo_file_links "$repo" "$dir"
+
+    find "$dir" -type f -name '*.md' -print0 | while IFS= read -r -d '' f; do
+      sed -i -E \
+        -e 's|\]\((\./)?docs/index\.md(#[^)]*)?\)|](./modules.md\2)|g' \
+        -e 's|\]\((\./)?docs/([^)#]+)\.md(#[^)]*)?\)|](./\2.md\3)|g' \
+        -e 's|\]\((\./)?docs/images/|](images/|g' \
+        "$f"
+    done
+
+    cat > "$dir/_category_.json" <<JSON
+{
+  "label": "$repo",
+  "position": $pos
+}
+JSON
+  done < <(printf '%s\n' "$DOCS_DEST/$JME_DIR"/*/ | LC_ALL=C sort)
+fi
 
 # ---------------------------------------------------------------------------
 # 2d. Pin "Getting started" first within its section — applied tree-wide, so
