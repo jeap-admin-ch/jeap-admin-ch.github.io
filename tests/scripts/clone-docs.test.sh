@@ -181,6 +181,66 @@ test_autodiscovery_stays_off_when_disabled() {
 }
 
 # ---------------------------------------------------------------------------
+# JME auto-discovery — a second, independent org pass. AUTODISCOVER_JME
+# defaults to AUTODISCOVER, so the off-by-default umbrella-only tests above
+# already leave it disabled; these tests exercise it explicitly with a fake
+# `gh` stub (no real network/org access) placed first on PATH.
+# ---------------------------------------------------------------------------
+
+# A fake `gh` that only understands `gh repo list <org> ...`, printing the
+# fixed repo names given as arguments (one per line) instead of hitting GitHub.
+make_fake_gh() {  # <names...>
+  local bin="$TMP_DIR/fakebin"
+  mkdir -p "$bin"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'if [ "$1" = "repo" ] && [ "$2" = "list" ]; then\n'
+    printf '  printf %%s\\\\n'
+    for n in "$@"; do printf ' %q' "$n"; done
+    printf '\n  exit 0\nfi\n'
+    printf 'echo "unsupported fake gh call: $*" >&2; exit 1\n'
+  } > "$bin/gh"
+  chmod +x "$bin/gh"
+  printf '%s' "$bin"
+}
+
+test_jme_autodiscovery_stays_off_when_disabled() {
+  make_umbrella "$TMP_DIR/src/umbrella"
+
+  run_clone REPO_BASE_URL="file://$TMP_DIR/src" REPOS="umbrella:root" \
+            AUTODISCOVER=false AUTODISCOVER_JME=false
+
+  assert_output 'skipping JME examples'
+  assert_no_file "$(docs_dest)/jme-examples" 'no JME section is created when disabled'
+}
+
+test_jme_autodiscovery_pulls_in_readme_only_repos() {
+  make_umbrella "$TMP_DIR/src/umbrella"
+  git_repo "$TMP_DIR/src/jme-widget-example" 'README.md=# JME Widget Example'
+  git_repo "$TMP_DIR/src/jme" 'README.md=# JME umbrella — start here'
+  local fakebin; fakebin="$(make_fake_gh jme-widget-example jme)"
+
+  PATH="$fakebin:$PATH" run_clone \
+    REPO_BASE_URL="file://$TMP_DIR/src" REPOS="umbrella:root" AUTODISCOVER=false \
+    JME_REPO_BASE_URL="file://$TMP_DIR/src" AUTODISCOVER_JME=true
+
+  assert_contains "$(section_dir jme-examples/jme-widget-example)/index.md" '# JME Widget Example'
+  assert_no_file "$(section_dir jme-examples/jme)" 'the jme umbrella repo itself is always excluded'
+}
+
+test_jme_autodiscovery_excludes_dot_github() {
+  make_umbrella "$TMP_DIR/src/umbrella"
+  git_repo "$TMP_DIR/src/.github" 'README.md=# org profile'
+  local fakebin; fakebin="$(make_fake_gh .github)"
+
+  PATH="$fakebin:$PATH" run_clone \
+    REPO_BASE_URL="file://$TMP_DIR/src" REPOS="umbrella:root" AUTODISCOVER=false \
+    JME_REPO_BASE_URL="file://$TMP_DIR/src" AUTODISCOVER_JME=true
+
+  assert_no_file "$(section_dir jme-examples/.github)" '.github is always excluded'
+}
+
+# ---------------------------------------------------------------------------
 # The two steps together — what the deploy workflow actually runs.
 # ---------------------------------------------------------------------------
 test_clone_and_prepare_run_end_to_end() {

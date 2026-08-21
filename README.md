@@ -14,18 +14,21 @@ Aggregation is a two-step pipeline (kept as two scripts so each step can run ind
 
 | Script | Purpose |
 |---|---|
-| `scripts/clone-docs.sh` | **Clone** the jEAP repos and copy their `docs/` into this repo's `docs/`. Two sources: the static `REPOS` manifest (the umbrella's general doc at the top level) and **auto-discovery** — enumerating the GitHub org and pulling in every repo that ships a top-level `docs/` dir as its own section under `docs/<repo>/`, with the repo's `README.md` as the landing page. Raw content only. |
-| `scripts/prepare-docs.sh` | **Transform** the assembled `docs/` for the site: inject sidebar ordering (including pinning a `getting-started` page first within its section), write category metadata, and rewrite links that are valid on GitHub but would break in Docusaurus. Operates in place, so it can also run on a `docs/` tree you copied in manually (skipping the clone step). |
+| `scripts/clone-docs.sh` | **Clone** the jEAP repos and copy their `docs/` into this repo's `docs/`. Three sources: the static `REPOS` manifest (the umbrella's general doc at the top level), **auto-discovery** — enumerating the `jeap-admin-ch` GitHub org and pulling in every repo that ships a top-level `docs/` dir as its own section under `docs/<repo>/`, with the repo's `README.md` as the landing page — and a second **JME auto-discovery** pass that enumerates the `jme-admin-ch` org (jEAP Microservice Examples) and pulls in every repo (README-only is fine — most JME repos have no `docs/` dir) as its own section under `docs/jme-examples/<repo>/`. Raw content only. |
+| `scripts/prepare-docs.sh` | **Transform** the assembled `docs/` for the site: inject sidebar ordering (including pinning a `getting-started` page first within its section), write category metadata, generate the JME Examples section's landing page, and rewrite links that are valid on GitHub but would break in Docusaurus. Operates in place, so it can also run on a `docs/` tree you copied in manually (skipping the clone step). |
 
 Both are configurable via environment variables — see the header comment in each script. `clone-docs.sh`
 reads `REPO_BASE_URL`, `BRANCH`, `REPOS`, `DOCS_DEST`, plus the auto-discovery settings `ORG`,
-`AUTODISCOVER` (`true`/`false`) and `EXCLUDE_REPOS` (repos to hold back). Auto-discovery uses the
-[`gh` CLI](https://cli.github.com/) and must be authenticated (in CI, `GH_TOKEN`); set `AUTODISCOVER=false`
-to run umbrella-only without `gh`. For example, to assemble from a local checkout on a feature branch
-(offline, no org enumeration):
+`AUTODISCOVER` (`true`/`false`) and `EXCLUDE_REPOS` (repos to hold back), and the JME auto-discovery
+settings `JME_ORG`, `JME_REPO_BASE_URL`, `JME_DIR`, `AUTODISCOVER_JME` and `EXCLUDE_JME_REPOS`. Both
+auto-discovery passes always skip their respective umbrella repo (`jeap`/`jme`) and `.github`. Auto-discovery
+uses the [`gh` CLI](https://cli.github.com/) and must be authenticated (in CI, `GH_TOKEN`); set
+`AUTODISCOVER=false`/`AUTODISCOVER_JME=false` to run umbrella-only without `gh`. For example, to assemble
+from a local checkout on a feature branch (offline, no org enumeration):
 
 ```bash
-REPO_BASE_URL="file:///path/to/parentdir" BRANCH="feature/XYZ" REPOS="jeap-admin-ch:root" AUTODISCOVER=false \
+REPO_BASE_URL="file:///path/to/parentdir" BRANCH="feature/XYZ" REPOS="jeap-admin-ch:root" \
+  AUTODISCOVER=false AUTODISCOVER_JME=false \
   bash scripts/clone-docs.sh
 bash scripts/prepare-docs.sh
 ```
