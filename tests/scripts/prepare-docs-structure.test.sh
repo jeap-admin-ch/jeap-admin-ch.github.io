@@ -376,4 +376,39 @@ MD
 $(printf '%s\n' "$diff_out" | sed 's/^/      /')"
 }
 
+# ---------------------------------------------------------------------------
+# JME Examples — the dedicated top-level section for the jme-admin-ch org's
+# example repos, assembled by clone-docs.sh's JME auto-discovery pass under
+# docs/jme-examples/<repo>/ (README-only sections are the norm there).
+# ---------------------------------------------------------------------------
+test_jme_examples_section_gets_a_category_and_generated_landing_page() {
+  doc _order <<<'what-is-jeap'
+  doc what-is-jeap.md <<<'# What is jEAP'
+  repo_section jme-examples/jme-widget-example <<<'# JME Widget Example
+
+See [docs](docs/usage.md).'
+  doc jme-examples/jme-widget-example/usage.md <<<'# Usage'
+
+  run_prepare
+
+  assert_json_field "$(section_dir jme-examples)/_category_.json" label 'JME Examples'
+  assert_contains "$(section_dir jme-examples)/index.md" 'JME Examples'
+  assert_contains "$(section_dir jme-examples)/index.md" './jme-widget-example/'
+  assert_json_field "$(section_dir jme-examples/jme-widget-example)/_category_.json" label 'jme-widget-example'
+  assert_link "$(section_dir jme-examples/jme-widget-example)/index.md" docs './usage.md'
+}
+
+test_jme_examples_repo_links_point_at_the_jme_org() {
+  doc _order <<<'what-is-jeap'
+  doc what-is-jeap.md <<<'# What is jEAP'
+  repo_section jme-examples/jme-widget-example <<<'# JME Widget Example
+
+- [build](build.gradle)'
+
+  run_prepare JME_REPO_WEB_BASE_URL="https://github.com/jme-admin-ch"
+
+  assert_link "$(section_dir jme-examples/jme-widget-example)/index.md" build \
+    'https://github.com/jme-admin-ch/jme-widget-example/blob/main/build.gradle'
+}
+
 run_tests
