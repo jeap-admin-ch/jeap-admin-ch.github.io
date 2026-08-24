@@ -142,6 +142,18 @@ test_repo_sections_sort_after_the_curated_content() {
   assert_json_field "$(section_dir alpha-repo)/_category_.json" label 'alpha-repo'
 }
 
+test_repo_section_links_to_its_github_source() {
+  umbrella_fixture
+  repo_section alpha-repo <<<'# Alpha
+
+Some content.'
+
+  run_prepare REPO_WEB_BASE_URL="https://github.com/jeap-admin-ch"
+
+  assert_link "$(section_dir alpha-repo)/index.md" 'Source on GitHub' \
+    'https://github.com/jeap-admin-ch/alpha-repo'
+}
+
 test_a_folder_without_an_index_is_not_a_repo_section() {
   doc loose/page.md <<<'# Just a page'
 
@@ -391,11 +403,28 @@ See [docs](docs/usage.md).'
 
   run_prepare
 
-  assert_json_field "$(section_dir jme-examples)/_category_.json" label 'JME Examples'
-  assert_contains "$(section_dir jme-examples)/index.md" 'JME Examples'
+  assert_json_field "$(section_dir jme-examples)/_category_.json" label 'jEAP Examples'
+  assert_json_field "$(section_dir jme-examples)/_category_.json" collapsed true
+  assert_contains "$(section_dir jme-examples)/index.md" 'jEAP Examples'
   assert_contains "$(section_dir jme-examples)/index.md" './jme-widget-example/'
   assert_json_field "$(section_dir jme-examples/jme-widget-example)/_category_.json" label 'jme-widget-example'
   assert_link "$(section_dir jme-examples/jme-widget-example)/index.md" docs './usage.md'
+}
+
+# The landing page and each repo section should link back to the repo's GitHub
+# source — examples should never be disconnected from their code.
+test_jme_examples_landing_page_and_repo_sections_link_to_github() {
+  doc _order <<<'what-is-jeap'
+  doc what-is-jeap.md <<<'# What is jEAP'
+  repo_section jme-examples/jme-widget-example <<<'# JME Widget Example
+
+Some content.'
+
+  run_prepare JME_REPO_WEB_BASE_URL="https://github.com/jme-admin-ch"
+
+  assert_contains "$(section_dir jme-examples)/index.md" 'https://github.com/jme-admin-ch/jme-widget-example'
+  assert_link "$(section_dir jme-examples/jme-widget-example)/index.md" 'Source on GitHub' \
+    'https://github.com/jme-admin-ch/jme-widget-example'
 }
 
 test_jme_examples_repo_links_point_at_the_jme_org() {

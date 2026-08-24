@@ -29,9 +29,11 @@
 #   2. Repo sections  For each auto-discovered repo section (a top-level subfolder
 #                  with an index.md, assembled by clone-docs.sh from a repo's
 #                  README + docs/): truncates the README at its trailing
-#                  boilerplate (Changes/Note/License), rewrites the README's
-#                  docs/ and image links to the relocated paths, and writes a
-#                  _category_.json labelled with the repo name. index.md is the
+#                  boilerplate (Changes/Note/License), inserts a "Source on
+#                  GitHub" link after the title so the page is never disconnected
+#                  from its repo, rewrites the README's docs/ and image links to
+#                  the relocated paths, and writes a _category_.json labelled
+#                  with the repo name. index.md is the
 #                  section landing page (Docusaurus category index convention).
 #
 #   3. Link rewrite  Fixes links that are valid on GitHub but would break the
@@ -235,27 +237,33 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 1c. JME Examples — a dedicated top-level category (jme-examples/) for the
+# 1c. jEAP Examples — a dedicated top-level category (jme-examples/) for the
 #     JME (jEAP Microservice Examples) repos assembled by clone-docs.sh's JME
 #     auto-discovery pass. Sorted after the _order manifest's own entries, right
 #     before the flat/auto-discovered jeap-admin-ch repo sections. The landing
 #     page is generated here (there is no umbrella README to reuse — the JME
-#     umbrella repo is intentionally excluded) and simply lists the repos found.
+#     umbrella repo is intentionally excluded) and simply lists the repos found,
+#     each linking both to its doc page and to its GitHub repository. Labelled
+#     "jEAP Examples" (not "JME") to match the rest of the sidebar's "jEAP *"
+#     naming; the JME acronym is an internal detail, not user-facing. Starts
+#     COLLAPSED (unlike other top-level categories): it has many more entries
+#     than any other sidebar section, and expanding it by default made the
+#     sidebar unreadable on first load.
 # ---------------------------------------------------------------------------
 if [ -d "$DOCS_DEST/$JME_DIR" ]; then
   log "JME: labelling section $JME_DIR and generating its landing page"
   jme_pos=$((pos + 1))
-  write_category "$DOCS_DEST/$JME_DIR" "JME Examples" "$jme_pos" false
+  write_category "$DOCS_DEST/$JME_DIR" "jEAP Examples" "$jme_pos" true
   MANIFEST_DIRS="$MANIFEST_DIRS $JME_DIR"
 
   {
-    printf '# JME Examples\n\n'
-    printf 'JME (jEAP Microservice Examples) example projects, sourced from the\n'
+    printf '# jEAP Examples\n\n'
+    printf 'Example projects demonstrating how to use jEAP building blocks, sourced from the\n'
     printf '[%s](%s) GitHub organization.\n\n' "$JME_ORG" "$JME_REPO_WEB_BASE_URL"
     while IFS= read -r rdir; do
       rname="$(basename "$rdir")"
       [ -f "$rdir/index.md" ] || continue
-      printf -- '- [%s](./%s/)\n' "$rname" "$rname"
+      printf -- '- [%s](./%s/) ([source](%s/%s))\n' "$rname" "$rname" "$JME_REPO_WEB_BASE_URL" "$rname"
     done < <(printf '%s\n' "$DOCS_DEST/$JME_DIR"/*/ | LC_ALL=C sort)
   } > "$DOCS_DEST/$JME_DIR/index.md"
 fi
@@ -473,6 +481,13 @@ while IFS= read -r dir; do
   sed -i -E '/^##[[:space:]]+([Cc]hangelog|[Cc]hange[[:space:]]+[Ll]og|[Cc]hanges?|[Nn]otes?|[Ll]icen[sc]e)([[:space:]].*)?$/,$d' \
     "$dir/index.md"
 
+  # Add a "source on GitHub" link right after the H1 title (same rationale as
+  # the JME repo sections below: a doc page should never be disconnected from
+  # its repo).
+  REPO_SOURCE_URL="$REPO_WEB_BASE_URL/$repo" perl -i -pe '
+    if (!$done && /^#[^#]/) { $_ .= "\n[Source on GitHub]($ENV{REPO_SOURCE_URL})\n"; $done = 1; }
+  ' "$dir/index.md"
+
   # 2a-bis. Rewrite links to source-repo files that have no published doc page
   #     (escaping docs/ via .., README links outside docs/, non-doc assets) to
   #     point at the file on GitHub. Runs before 2b so it sees original targets.
@@ -526,6 +541,13 @@ if [ -d "$DOCS_DEST/$JME_DIR" ]; then
 
     sed -i -E '/^##[[:space:]]+([Cc]hangelog|[Cc]hange[[:space:]]+[Ll]og|[Cc]hanges?|[Nn]otes?|[Ll]icen[sc]e)([[:space:]].*)?$/,$d' \
       "$dir/index.md"
+
+    # Add a "source on GitHub" link right after the H1 title so the example
+    # is never disconnected from its repo (feedback: examples "hang in the
+    # air" without an obvious way back to the code).
+    JME_SOURCE_URL="$JME_REPO_WEB_BASE_URL/$repo" perl -i -pe '
+      if (!$done && /^#[^#]/) { $_ .= "\n[Source on GitHub]($ENV{JME_SOURCE_URL})\n"; $done = 1; }
+    ' "$dir/index.md"
 
     REPO_WEB_BASE_URL="$JME_REPO_WEB_BASE_URL" rewrite_repo_file_links "$repo" "$dir"
 
