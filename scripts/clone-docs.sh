@@ -47,7 +47,7 @@
 #   EXCLUDE_REPOS  Space-separated repo names to hold back from auto-discovery
 #                  (e.g. repos whose docs/ layout does not yet match the
 #                  authoritative jeap-spring-boot-jwe-starter shape).
-#                  Default: "jeap-governance-service jeap-python-pipeline-lib"
+#                  Default: "jeap-python-pipeline-lib"
 #   LOCAL_REPOS    Space/newline separated list of paths to LOCAL repo checkouts.
 #                  Each is assembled from its working tree (uncommitted edits
 #                  included) instead of being cloned, and the same-named repo is
@@ -109,7 +109,7 @@ Environment variables (defaults in brackets):
   AUTODISCOVER    true = enumerate the org and pull in every repo with a docs/
                   dir; false = umbrella-only (offline, no gh CLI). [true]
   EXCLUDE_REPOS   Space-separated repo names to hold back from auto-discovery.
-                  [jeap-governance-service jeap-python-pipeline-lib]
+                  [jeap-python-pipeline-lib]
   LOCAL_REPOS     Space-separated paths to LOCAL repo checkouts, assembled from
                   their working tree (uncommitted edits included) instead of
                   cloned; the same-named repo is skipped during auto-discovery so
@@ -141,7 +141,7 @@ REPOS="${REPOS:-jeap:root}"
 DOCS_DEST="${DOCS_DEST:-$SITE_ROOT/docs}"
 ORG="${ORG:-jeap-admin-ch}"
 AUTODISCOVER="${AUTODISCOVER:-true}"
-EXCLUDE_REPOS="${EXCLUDE_REPOS:-jeap-governance-service jeap-python-pipeline-lib}"
+EXCLUDE_REPOS="${EXCLUDE_REPOS:-jeap-python-pipeline-lib}"
 LOCAL_REPOS="${LOCAL_REPOS:-}"
 
 # JME (jEAP Microservice Examples) org — a second, independent auto-discovery
