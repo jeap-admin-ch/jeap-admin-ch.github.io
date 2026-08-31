@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-// Swizzled to add RSS/Atom feed subscription links below the recent-posts list, so they are
+// Swizzled to add RSS/Atom feed subscription links above the recent-posts list, so they are
 // visible directly on the blog pages (not just in the site footer).
 
 import React, {memo, type ReactNode} from 'react';
@@ -39,11 +39,6 @@ function BlogSidebarMobileSecondaryMenu({sidebar}: Props): ReactNode {
   const atomUrl = useBaseUrl('/blog/atom.xml');
   return (
     <>
-      <BlogSidebarContent
-        items={items}
-        ListComponent={ListComponent}
-        yearGroupHeadingClassName={styles.yearGroupHeading}
-      />
       <ul className="menu__list">
         <li className="menu__list-item">
           <a className="menu__link" href={rssUrl}>
@@ -56,6 +51,11 @@ function BlogSidebarMobileSecondaryMenu({sidebar}: Props): ReactNode {
           </a>
         </li>
       </ul>
+      <BlogSidebarContent
+        items={items}
+        ListComponent={ListComponent}
+        yearGroupHeadingClassName={styles.yearGroupHeading}
+      />
     </>
   );
 }
