@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-// Swizzled to add RSS/Atom feed subscription links below the recent-posts list, so they are
+// Swizzled to add RSS/Atom feed subscription links above the recent-posts list, so they are
 // visible directly on the blog pages (not just in the site footer).
 
 import React, {memo} from 'react';
@@ -47,15 +47,7 @@ function BlogSidebarDesktop({sidebar}: Props) {
           message: 'Blog recent posts navigation',
           description: 'The ARIA label for recent posts in the blog sidebar',
         })}>
-        <div className={clsx(styles.sidebarItemTitle, 'margin-bottom--md')}>
-          {sidebar.title}
-        </div>
-        <BlogSidebarContent
-          items={items}
-          ListComponent={ListComponent}
-          yearGroupHeadingClassName={styles.yearGroupHeading}
-        />
-        <div className={clsx(styles.sidebarItemTitle, 'margin-bottom--sm', 'margin-top--md')}>
+        <div className={clsx(styles.sidebarItemTitle, 'margin-bottom--sm')}>
           Subscribe
         </div>
         <ul className={clsx(styles.sidebarItemList, 'clean-list')}>
@@ -74,6 +66,14 @@ function BlogSidebarDesktop({sidebar}: Props) {
             </a>
           </li>
         </ul>
+        <div className={clsx(styles.sidebarItemTitle, 'margin-bottom--md', 'margin-top--md')}>
+          {sidebar.title}
+        </div>
+        <BlogSidebarContent
+          items={items}
+          ListComponent={ListComponent}
+          yearGroupHeadingClassName={styles.yearGroupHeading}
+        />
       </nav>
     </aside>
   );
