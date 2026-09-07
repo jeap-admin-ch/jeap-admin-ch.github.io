@@ -74,7 +74,7 @@ jobs:
 
   notify-ms-teams:
     needs: [build, deploy]
-    if: always() && github.ref == 'refs/heads/main' && (needs.build.result == 'failure' || needs.deploy.result == 'failure')
+    if: always() && (needs.build.result == 'failure' || needs.deploy.result == 'failure')
     runs-on: ubuntu-latest
     steps:
       - name: Notify Microsoft Teams in case of build or deploy failure
@@ -212,10 +212,7 @@ jobs:
                 }
               ]
             }' |
-            curl --fail --silent \
-              -H "Content-Type: application/json" \
-              --data-binary @- \
-              "$MS_TEAMS_WEBHOOK" >/dev/null 2>/tmp/teams.err || {
-                echo "Teams notification failed"
-                exit 1
-              }
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            --data-binary @- \
+            "$MS_TEAMS_WEBHOOK"
