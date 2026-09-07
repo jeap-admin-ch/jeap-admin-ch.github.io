@@ -71,3 +71,148 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  notify-ms-teams:
+    needs: [build, deploy]
+    if: always() && (needs.build.result == 'failure' || needs.deploy.result == 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Microsoft Teams in case of build or deploy failure
+        env:
+          MS_TEAMS_WEBHOOK: ${{ secrets.MS_TEAMS_WEBHOOK }}
+          BUILD_STATUS: ${{ needs.build.result }}
+          DEPLOY_STATUS: ${{ needs.deploy.result }}
+        run: |
+          if [ -z "$MS_TEAMS_WEBHOOK" ]; then
+            echo "MS_TEAMS_WEBHOOK is not configured"
+            exit 0
+          fi
+
+          format_status() {
+            case "$1" in
+              success)
+                echo "🟢 Success"
+                ;;
+              failure)
+                echo "🔴 Failed"
+                ;;
+              cancelled)
+                echo "🟡 Cancelled"
+                ;;
+              skipped)
+                echo "⚪ Skipped"
+                ;;
+              *)
+                echo "⚪ ${1:-Unknown}"
+                ;;
+            esac
+          }
+
+          BUILD_STATUS_TEXT="$(format_status "$BUILD_STATUS")"
+          DEPLOY_STATUS_TEXT="$(format_status "$DEPLOY_STATUS")"
+
+          if [ "$BUILD_STATUS" = "failure" ] || [ "$DEPLOY_STATUS" = "failure" ]; then
+            OVERALL_STATUS="Failed"
+            OVERALL_ICON="🔴"
+          elif [ "$BUILD_STATUS" = "cancelled" ] || [ "$DEPLOY_STATUS" = "cancelled" ]; then
+            OVERALL_STATUS="Cancelled"
+            OVERALL_ICON="🟡"
+          elif [ "$BUILD_STATUS" = "success" ] && { [ "$DEPLOY_STATUS" = "success" ] || [ "$DEPLOY_STATUS" = "skipped" ]; }; then
+            OVERALL_STATUS="Success"
+            OVERALL_ICON="🟢"
+          else
+            OVERALL_STATUS="${BUILD_STATUS:-${DEPLOY_STATUS:-Unknown}}"
+            OVERALL_ICON="⚪"
+          fi
+
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          jq -n \
+            --arg workflow "${{ github.workflow }}" \
+            --arg project "${{ github.repository }}" \
+            --arg status "$OVERALL_STATUS" \
+            --arg statusIcon "$OVERALL_ICON" \
+            --arg buildStatus "$BUILD_STATUS_TEXT" \
+            --arg deployStatus "$DEPLOY_STATUS_TEXT" \
+            --arg repository "${{ github.repository }}" \
+            --arg branch "${{ github.ref_name }}" \
+            --arg commit "${{ github.sha }}" \
+            --arg actor "${{ github.actor }}" \
+            --arg runId "${{ github.run_id }}" \
+            --arg runUrl "$RUN_URL" \
+            '{
+              type: "message",
+              attachments: [
+                {
+                  contentType: "application/vnd.microsoft.card.adaptive",
+                  content: {
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    type: "AdaptiveCard",
+                    version: "1.4",
+                    body: [
+                      {
+                        type: "TextBlock",
+                        text: "GitHub Actions",
+                        weight: "Bolder",
+                        size: "Medium"
+                      },
+                      {
+                        type: "TextBlock",
+                        text: ($workflow + " • " + $project),
+                        weight: "Bolder",
+                        size: "Large",
+                        wrap: true
+                      },
+                      {
+                        type: "FactSet",
+                        facts: [
+                          {
+                            title: "Status",
+                            value: ($statusIcon + " " + $status)
+                          },
+                          {
+                            title: "Build",
+                            value: $buildStatus
+                          },
+                          {
+                            title: "Deploy",
+                            value: $deployStatus
+                          },
+                          {
+                            title: "Repository",
+                            value: $repository
+                          },
+                          {
+                            title: "Branch",
+                            value: $branch
+                          },
+                          {
+                            title: "Commit",
+                            value: ($commit[0:7])
+                          },
+                          {
+                            title: "Triggered by",
+                            value: $actor
+                          },
+                          {
+                            title: "Run",
+                            value: ("#" + $runId)
+                          }
+                        ]
+                      }
+                    ],
+                    actions: [
+                      {
+                        type: "Action.OpenUrl",
+                        title: "View GitHub Actions run",
+                        url: $runUrl
+                      }
+                    ]
+                  }
+                }
+              ]
+            }' |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            --data-binary @- \
+            "$MS_TEAMS_WEBHOOK"
