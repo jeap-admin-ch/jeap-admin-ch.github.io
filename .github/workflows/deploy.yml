@@ -212,7 +212,13 @@ jobs:
                 }
               ]
             }' |
-          curl -X POST \
-            -H "Content-Type: application/json" \
-            --data-binary @- \
-            "$MS_TEAMS_WEBHOOK"
+            http_code=$(curl --silent --show-error \
+              --output /dev/null \
+              --write-out "%{http_code}" \
+              -H "Content-Type: application/json" \
+              --data-binary @- \
+              "$MS_TEAMS_WEBHOOK" 2>/dev/null)
+            if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+              echo "Teams notification failed (HTTP status: $http_code)"
+              exit 1
+            fi
