@@ -212,7 +212,10 @@ jobs:
                 }
               ]
             }' |
-          curl -X POST \
-            -H "Content-Type: application/json" \
-            --data-binary @- \
-            "$MS_TEAMS_WEBHOOK"
+            curl --fail --silent \
+              -H "Content-Type: application/json" \
+              --data-binary @- \
+              "$MS_TEAMS_WEBHOOK" >/dev/null 2>/tmp/teams.err || {
+                echo "Teams notification failed"
+                exit 1
+              }
