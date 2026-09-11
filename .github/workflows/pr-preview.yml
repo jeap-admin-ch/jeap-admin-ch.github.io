@@ -42,9 +42,6 @@ jobs:
           REPO_BASE_URL: https://github.com/jeap-admin-ch
           BRANCH: ${{ inputs.docs_branch || 'main' }}
           GH_TOKEN: ${{ github.token }}
-          # Temporarily held back: MDX compilation failure in jeap-project-rag's docs
-          # (raw "<5..." text parsed as an invalid JSX tag). Re-enable once fixed upstream.
-          EXCLUDE_REPOS: jeap-project-rag jeap-project-rag-preindexed
 
       - name: Prepare documentation for GitHub Pages
         run: bash scripts/prepare-docs.sh
