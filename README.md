@@ -35,7 +35,7 @@ bash scripts/prepare-docs.sh
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) >= 18 (CI uses Node 22; locally, e.g. `nvm use 22`)
+- [Node.js](https://nodejs.org/) >= 20.9.0 (CI uses Node 22; locally, e.g. `nvm use 22`)
 
 ## Local scripts
 
