@@ -64,6 +64,7 @@ const config = {
           'Documentation for jEAP, the Java Enterprise Application Platform: reusable microservices, libraries, Spring Boot starters and tooling.',
       },
     ],
+    ['@matfsw/docusaurus-plantuml-plugin', {theme: 'auto', lazy: true}],
   ],
 
   presets: [
