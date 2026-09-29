@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Sidebar structure produced by scripts/prepare-docs.sh: the _order manifest,
-# the _categories routing manifest, the getting-started pin, and idempotency.
+# Sidebar structure produced by scripts/prepare-docs.sh: the _order manifest
+# (at the root and nested in any folder), the _categories routing manifest, the
+# getting-started pin, and idempotency.
 #
 # The ordering lives in manifests shipped by the umbrella repo, so the site
 # build is the only thing that reads them — a malformed entry or an off-by-one
@@ -124,6 +125,163 @@ MD
   local index; index="$(docs_dest)/using-jeap/index.md"
   assert_contains "$index" '## License' 'curated sections must not get the README truncation'
   assert_json_field "$(docs_dest)/using-jeap/_category_.json" label 'Using Jeap'
+}
+
+# ---------------------------------------------------------------------------
+# Nested _order — a folder below the root orders its own children
+# ---------------------------------------------------------------------------
+# A curated topic folder as the umbrella ships it: an index page, pages and
+# subfolders listed in reading order by the folder's own manifest.
+nested_fixture() {
+  doc _order <<'MD'
+what-is-jeap
+concepts | Concepts
+MD
+  doc what-is-jeap.md  <<<'# What is jEAP'
+  doc concepts/index.md <<<'# Concepts'
+  doc concepts/security/index.md <<<'# Security'
+  doc concepts/security/_order <<'MD'
+oidc                     # a page
+role-concept.md          # a page, .md suffix tolerated
+protecting | Protecting REST APIs
+testing
+MD
+  doc concepts/security/oidc.md          <<<'# OIDC'
+  doc concepts/security/role-concept.md  <<<'# Role concept'
+  doc concepts/security/protecting/index.md <<<'# Protecting'
+  doc concepts/security/testing/index.md    <<<'# Testing'
+}
+
+test_a_nested_manifest_positions_the_folders_own_children() {
+  nested_fixture
+  run_prepare
+
+  local sec; sec="$(docs_dest)/concepts/security"
+  assert_contains "$sec/oidc.md"         'sidebar_position: 1'
+  assert_contains "$sec/role-concept.md" 'sidebar_position: 2'
+  assert_json_field "$sec/protecting/_category_.json" position 3
+  assert_json_field "$sec/testing/_category_.json"    position 4
+  # Only the manifest's own children are touched: the manifest folder itself gets
+  # no metadata (its parent has no manifest), and the root manifest's metadata
+  # for the parent survives.
+  assert_no_file "$sec/_category_.json" 'the manifest folder itself is not positioned'
+  assert_json_field "$(docs_dest)/concepts/_category_.json" label    'Concepts'
+  assert_json_field "$(docs_dest)/concepts/_category_.json" position 2
+  assert_not_contains "$(docs_dest)/concepts/index.md" 'Source on GitHub' 'a curated folder is not a repo section'
+}
+
+test_a_nested_category_is_collapsed_and_labelled_only_when_asked() {
+  nested_fixture
+  run_prepare
+
+  local sec; sec="$(docs_dest)/concepts/security"
+  assert_json_field "$sec/protecting/_category_.json" label     'Protecting REST APIs'
+  assert_json_field "$sec/protecting/_category_.json" collapsed true
+  # Without `| Label` no label is written, so Docusaurus takes the index.md title
+  # (a derived "Testing" would be a lucky coincidence here; assert the key is absent).
+  assert_not_contains "$sec/testing/_category_.json" '"label"' 'no label key without an explicit label'
+  assert_json_field "$sec/testing/_category_.json" collapsed true
+}
+
+test_a_nested_manifest_entry_naming_a_path_is_rejected() {
+  nested_fixture
+  doc concepts/security/_order <<'MD'
+protecting/index
+../index
+oidc
+MD
+
+  run_prepare
+
+  assert_output "must name a direct child"
+  # Rejected entries consume no position.
+  assert_contains "$(docs_dest)/concepts/security/oidc.md" 'sidebar_position: 1'
+  assert_no_file "$(docs_dest)/concepts/security/protecting/_category_.json"
+}
+
+test_a_missing_nested_manifest_entry_warns_instead_of_failing() {
+  nested_fixture
+  doc concepts/security/_order <<'MD'
+does-not-exist
+oidc
+MD
+
+  run_prepare
+
+  assert_output "manifest entry 'does-not-exist' not found"
+  assert_contains "$(docs_dest)/concepts/security/oidc.md" 'sidebar_position: 2' 'a missing entry keeps its slot'
+}
+
+test_source_front_matter_wins_over_a_nested_manifest() {
+  nested_fixture
+  doc concepts/security/oidc.md <<'MD'
+---
+sidebar_position: 42
+---
+
+# OIDC
+MD
+
+  run_prepare
+
+  assert_contains     "$(docs_dest)/concepts/security/oidc.md" 'sidebar_position: 42'
+  assert_not_contains "$(docs_dest)/concepts/security/oidc.md" 'sidebar_position: 1'
+}
+
+test_a_nested_manifest_inside_a_routed_repo_section_is_applied_at_its_final_location() {
+  categories_fixture
+  repo_section jeap-audit <<<'# Audit'
+  doc jeap-audit/sub/_order <<'MD'
+usage
+reference
+MD
+  doc jeap-audit/sub/reference.md <<<'# Reference'
+  doc jeap-audit/sub/usage.md     <<<'# Usage'
+
+  run_prepare
+
+  local sec; sec="$(docs_dest)/building-blocks/libraries/jeap-audit"
+  assert_contains "$sec/sub/usage.md"     'sidebar_position: 1'
+  assert_contains "$sec/sub/reference.md" 'sidebar_position: 2'
+  # The section's own category (written by the repo-section step) is untouched.
+  assert_json_field "$sec/_category_.json" label 'jeap-audit'
+}
+
+# The nested pass must run AFTER routing: a manifest in a subcategory folder can
+# only find a routed repo section there once the section has been moved in.
+test_a_nested_manifest_in_a_subcategory_orders_the_repo_sections_routed_into_it() {
+  categories_fixture
+  repo_section jeap-audit <<<'# Audit'
+  repo_section jeap-zzz   <<<'# Another library'
+  doc building-blocks/libraries/_order <<'MD'
+jeap-zzz
+jeap-audit
+MD
+
+  run_prepare
+
+  local lib; lib="$(docs_dest)/building-blocks/libraries"
+  assert_json_field "$lib/jeap-zzz/_category_.json"   position 1
+  assert_json_field "$lib/jeap-audit/_category_.json" position 2
+  # A listed section is relabelled from its README title (no label key written).
+  assert_not_contains "$lib/jeap-audit/_category_.json" '"label"'
+}
+
+# Labels are free text from the manifest; the JSON must stay valid and decode
+# back to the label for quotes, backslashes and control characters alike.
+test_a_category_label_with_special_characters_stays_valid_json() {
+  # A leading "-" must not be read as a Perl switch by the encoder.
+  local tab=$'\t'
+  doc _order <<<"section | -- Say \"hi\"${tab}\\ back"
+  doc section/index.md <<<'# Section'
+
+  run_prepare
+
+  local cat decoded; cat="$(docs_dest)/section/_category_.json"
+  decoded="$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).label)' "$cat" 2>/dev/null)" ||
+    fail "the _category_.json is not valid JSON:
+$(sed 's/^/      /' "$cat")"
+  assert_eq "-- Say \"hi\"${tab}\\ back" "$decoded" 'the label decodes back to the manifest text'
 }
 
 # ---------------------------------------------------------------------------
@@ -374,11 +532,16 @@ Boilerplate.
 MD
   doc jeap-audit/usage.md <<<'# Usage'
   doc jeap-audit/getting-started.md <<<'# Getting started'
+  doc jeap-audit/_order <<<'usage'                  # a repo-root manifest is a nested one here
+  doc jeap-audit/sub/_order <<<'page'
+  doc jeap-audit/sub/page.md <<<'# Page'
   doc using-jeap.md <<<'# Using jEAP
 
 - [section](/docs/jeap-audit/page)'
 
   run_prepare
+  assert_contains "$(docs_dest)/building-blocks/libraries/jeap-audit/usage.md" 'sidebar_position: 1' \
+    'the repo-root manifest was applied on the first run'
   cp -R "$DOCS_DEST" "$TMP_DIR/first-run"
   run_prepare
 

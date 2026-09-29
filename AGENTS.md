@@ -31,7 +31,7 @@ Both `dev.sh` and `preview.sh` accept `--local <path>` (repeatable) and `--no-au
 ./dev.sh --local ../jeap-admin-ch --no-autodiscover        # umbrella-only, umbrella served from local (offline)
 ```
 
-`--local <path>` serves a repo's docs from a **local checkout** (working tree, uncommitted edits included) instead of cloning it from GitHub; everything else is still cloned/auto-discovered as usual, so the overridden repo's local copy wins. The section name is the directory basename; a checkout whose `docs/` ships an `_order` manifest (the umbrella) is placed at the site root, any other repo as its own nested section. `--no-autodiscover` skips GitHub org auto-discovery, assembling only the umbrella plus any `--local` repos — but the umbrella is **still cloned from GitHub** unless you also pass a `--local` umbrella checkout (then it's fully GitHub-free). Re-run to pick up further edits.
+`--local <path>` serves a repo's docs from a **local checkout** (working tree, uncommitted edits included) instead of cloning it from GitHub; everything else is still cloned/auto-discovered as usual, so the overridden repo's local copy wins. The section name is the directory basename; a checkout of the repo that the `REPOS` manifest places at the root (the umbrella, recognized by its git remote "origin", or by its directory name when it has none) is placed at the site root, any other repo as its own nested section. `--no-autodiscover` skips GitHub org auto-discovery, assembling only the umbrella plus any `--local` repos — but the umbrella is **still cloned from GitHub** unless you also pass a `--local` umbrella checkout (then it's fully GitHub-free). Re-run to pick up further edits.
 
 ## The docs aggregation pipeline (the core mechanic)
 
@@ -50,7 +50,7 @@ Both `dev.sh` and `preview.sh` accept `--local <path>` (repeatable) and `--no-au
    using-jeap
    building-blocks | Building Blocks
    ```
-   Each entry names a top-level file or folder; its line number is the sidebar position. `| Label` (optional) sets a folder's category label. A file that already ships its own front matter wins over the manifest. Without `_order`, top-level entries fall back to Docusaurus' alphabetical order.
+   Each entry names a top-level file or folder; its line number is the sidebar position. `| Label` (optional) sets a folder's category label. A file that already ships its own front matter wins over the manifest. Without `_order`, top-level entries fall back to Docusaurus' alphabetical order. The same manifest works in any **nested** folder: a folder that ships its own `_order` (a topic folder in the umbrella, or any folder of a repo's `docs/`, its root included) orders its direct children the same way; entries must name a direct child (no paths), nested categories start collapsed, and a folder entry without `| Label` gets no label so Docusaurus uses its `index.md` title. Nested manifests are applied after the repo sections are routed, and a `getting-started` pin still wins over them.
 
 To assemble from a local checkout on a feature branch (`AUTODISCOVER=false` keeps it offline — otherwise it would enumerate the real GitHub org via `gh`):
 ```bash

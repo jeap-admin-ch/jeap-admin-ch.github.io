@@ -15,7 +15,7 @@ Aggregation is a two-step pipeline (kept as two scripts so each step can run ind
 | Script | Purpose |
 |---|---|
 | `scripts/clone-docs.sh` | **Clone** the jEAP repos and copy their `docs/` into this repo's `docs/`. Three sources: the static `REPOS` manifest (the umbrella's general doc at the top level), **auto-discovery** — enumerating the `jeap-admin-ch` GitHub org and pulling in every repo that ships a top-level `docs/` dir as its own section under `docs/<repo>/`, with the repo's `README.md` as the landing page — and a second **JME auto-discovery** pass that enumerates the `jme-admin-ch` org (jEAP Microservice Examples) and pulls in every repo (README-only is fine — most JME repos have no `docs/` dir) as its own section under `docs/jme-examples/<repo>/`. Raw content only. |
-| `scripts/prepare-docs.sh` | **Transform** the assembled `docs/` for the site: inject sidebar ordering (including pinning a `getting-started` page first within its section), write category metadata, generate the JME Examples section's landing page, and rewrite links that are valid on GitHub but would break in Docusaurus. Operates in place, so it can also run on a `docs/` tree you copied in manually (skipping the clone step). |
+| `scripts/prepare-docs.sh` | **Transform** the assembled `docs/` for the site: inject sidebar ordering from the `_order` manifests (the umbrella's top-level one and the one any nested folder may ship for its own children, plus pinning a `getting-started` page first within its section), write category metadata, generate the JME Examples section's landing page, and rewrite links that are valid on GitHub but would break in Docusaurus. Operates in place, so it can also run on a `docs/` tree you copied in manually (skipping the clone step). |
 
 Both are configurable via environment variables — see the header comment in each script. `clone-docs.sh`
 reads `REPO_BASE_URL`, `BRANCH`, `REPOS`, `DOCS_DEST`, plus the auto-discovery settings `ORG`,
@@ -63,8 +63,9 @@ Both `dev.sh` and `preview.sh` serve at `http://localhost:3000`, but they are no
 Both scripts accept `--local <path>` (repeatable) and `--no-autodiscover`. `--local` serves a repo's docs from
 a **local checkout** — the working tree, including **uncommitted** edits — instead of cloning it from GitHub;
 everything else is still cloned/auto-discovered as usual, so the overridden repo's local copy wins. The
-section name is the directory basename. A checkout whose `docs/` ships an `_order` manifest (the umbrella) is
-placed at the site root; any other repo becomes its own nested section. `--no-autodiscover` skips GitHub org
+section name is the directory basename. A checkout of the repo that the `REPOS` manifest places at the root (the
+umbrella, recognized by its git remote "origin", or by its directory name when it has none) is placed at the site
+root; any other repo becomes its own nested section. `--no-autodiscover` skips GitHub org
 auto-discovery, assembling only the umbrella plus any `--local` repos — but the umbrella is **still cloned from
 GitHub** unless you also `--local` an umbrella checkout (only then is it fully GitHub-free). The dev server
 watches the copied `docs/`, so re-run the script to pick up further edits.

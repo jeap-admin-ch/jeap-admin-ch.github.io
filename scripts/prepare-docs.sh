@@ -19,6 +19,14 @@
 #                  front matter are left untouched. See the section-1 banner
 #                  below for the manifest format.
 #
+#                  The same manifest works in any nested folder: a folder that
+#                  ships its own `_order` (e.g. concepts/<topic>/_order in the
+#                  umbrella, or docs/<sub>/_order in a repo) orders its direct
+#                  children the same way (step 2f). Nested categories start
+#                  collapsed and, unless the entry gives a `| Label`, carry no
+#                  label of their own, so Docusaurus keeps labelling them by
+#                  the title of their index.md.
+#
 #                  A "Getting started" page is pinned FIRST within its section,
 #                  tree-wide: any getting-started.md (or getting-started/ folder)
 #                  gets sidebar_position 0, so every documented repo that ships
@@ -136,6 +144,12 @@ die()  { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 #      ships its own front matter — the source wins). Folders get a
 #      _category_.json. Auto-discovered repo sections (step 2) sort after these.
 #    - `_order` is underscore-prefixed, so Docusaurus ignores it as a route.
+#
+#    A nested folder's `_order` uses the same format and orders that folder's
+#    direct children only (an entry containing a path separator is rejected);
+#    it is applied in step 2f, once the tree has its final shape. Differences
+#    to the root manifest: categories start collapsed, and a folder entry
+#    without `| Label` gets no label (Docusaurus then uses the index.md title).
 # ---------------------------------------------------------------------------
 
 # Prepend sidebar_position front matter to a top-level page. No-op if the file
@@ -184,30 +198,43 @@ force_position() {  # <relative-file> <position>
 
 # Write a folder's _category_.json (label + position). index.md inside the
 # folder stays the category landing page (no "link" key — index convention).
-# The optional <collapsed> arg (default "true") sets whether the category starts
-# collapsed in the sidebar; top-level categories pass "false" so they render
-# expanded initially.
+# An empty <label> omits the key, so Docusaurus falls back to the title of the
+# folder's index.md. The optional <collapsed> arg (default "true") sets whether
+# the category starts collapsed in the sidebar; top-level categories pass
+# "false" so they render expanded initially.
 write_category() {  # <dir> <label> <position> [collapsed]
-  local dir="$1" label="$2" pos="$3" collapsed="${4:-true}"
-  log "ordering: category $(basename "$dir") -> position $pos (label: $label, collapsed: $collapsed)"
-  cat > "$dir/_category_.json" <<JSON
-{
-  "label": "$label",
-  "position": $pos,
-  "collapsed": $collapsed
-}
-JSON
+  local dir="$1" label="$2" pos="$3" collapsed="${4:-true}" encoded=""
+  log "ordering: category $(basename "$dir") -> position $pos (label: ${label:-<from index.md>}, collapsed: $collapsed)"
+  if [ -n "$label" ]; then
+    # The label is a free-text manifest entry: encode it as a JSON string (core
+    # Perl module) so quotes, backslashes and control characters stay valid.
+    # "--" keeps a label starting with "-" from being read as a Perl switch.
+    encoded="$(perl -MJSON::PP -e 'print JSON::PP->new->allow_nonref->encode($ARGV[0])' -- "$label")" ||
+      die "ordering: cannot encode category label '$label' for $dir"
+  fi
+  {
+    printf '{\n'
+    [ -z "$encoded" ] || printf '  "label": %s,\n' "$encoded"
+    printf '  "position": %s,\n  "collapsed": %s\n}\n' "$pos" "$collapsed"
+  } > "$dir/_category_.json"
 }
 
-# Folders claimed by the manifest — recorded so the repo-section loop (step 2)
-# skips them and never applies its README/link transforms to curated sections.
-MANIFEST_DIRS=""
+# Prettify a file or folder name into a label: foo-bar -> Foo Bar.
+label_from_name() {  # <name>
+  printf '%s' "$1" | sed -E 's/[-_]/ /g; s/(^| )([a-z])/\1\U\2/g'
+}
 
-ORDER_FILE="$DOCS_DEST/_order"
-pos=0
-if [ -f "$ORDER_FILE" ]; then
-  log "ordering: applying manifest $ORDER_FILE"
-  pos=0
+# Apply one folder's `_order` manifest to that folder's direct children (see the
+# banner above for the format). <scope> is "root" for the umbrella's top-level
+# manifest (categories expanded, default labels derived from the name, folders
+# recorded in MANIFEST_DIRS) or "nested" for any other folder (categories
+# collapsed, no label unless given). Sets ORDER_LAST_POS to the number of
+# positions consumed, so the caller can place further entries after them.
+apply_order_manifest() {  # <dir> <scope>
+  local dir="$1" scope="$2" manifest="$1/_order"
+  local rel="${dir#"$DOCS_DEST"}"; rel="${rel#/}"        # "" for the root
+  local pos=0 line entry label name
+  log "ordering: applying manifest ${rel:+$rel/}_order"
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line%%#*}"                                   # strip trailing comment
     line="$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
@@ -219,22 +246,44 @@ if [ -f "$ORDER_FILE" ]; then
         label="$(printf '%s' "$line" | sed -E 's/^[^|]*\|[[:space:]]*//')"
         ;;
     esac
-    pos=$((pos + 1))
     name="${entry%.md}"                                  # tolerate a .md suffix
-    if [ -d "$DOCS_DEST/$name" ]; then
-      [ -n "$label" ] || label="$(printf '%s' "$name" | sed -E 's/[-_]/ /g; s/(^| )([a-z])/\1\U\2/g')"
-      # Top-level categories render expanded by default (collapsed: false).
-      write_category "$DOCS_DEST/$name" "$label" "$pos" false
-      MANIFEST_DIRS="$MANIFEST_DIRS $name"
-    elif [ -f "$DOCS_DEST/$name.md" ]; then
-      set_position "$name.md" "$pos"
+    case "$name" in
+      ""|.|..|*/*)
+        warn "ordering: manifest entry '$entry' in ${rel:+$rel/}_order must name a direct child — skipping"
+        continue
+        ;;
+    esac
+    pos=$((pos + 1))
+    if [ -d "$dir/$name" ]; then
+      if [ "$scope" = root ]; then
+        [ -n "$label" ] || label="$(label_from_name "$name")"
+        # Top-level categories render expanded by default (collapsed: false).
+        write_category "$dir/$name" "$label" "$pos" false
+        MANIFEST_DIRS="$MANIFEST_DIRS $name"
+      else
+        write_category "$dir/$name" "$label" "$pos" true
+      fi
+    elif [ -f "$dir/$name.md" ]; then
+      set_position "${rel:+$rel/}$name.md" "$pos"
     else
-      warn "ordering: manifest entry '$entry' not found in $DOCS_DEST — skipping"
+      warn "ordering: manifest entry '$entry' not found in ${dir} — skipping"
     fi
-  done < "$ORDER_FILE"
+  done < "$manifest"
+  ORDER_LAST_POS=$pos
+}
+
+# Folders claimed by the manifest — recorded so the repo-section loop (step 2)
+# skips them and never applies its README/link transforms to curated sections.
+MANIFEST_DIRS=""
+
+ORDER_FILE="$DOCS_DEST/_order"
+ORDER_LAST_POS=0
+if [ -f "$ORDER_FILE" ]; then
+  apply_order_manifest "$DOCS_DEST" root
 else
   warn "ordering: no manifest at $ORDER_FILE — top-level entries fall back to Docusaurus' default (alphabetical) order"
 fi
+pos=$ORDER_LAST_POS
 
 # ---------------------------------------------------------------------------
 # 1c. jEAP Examples — a dedicated top-level category (jme-examples/) for the
@@ -458,7 +507,7 @@ while IFS= read -r dir; do
     if [ ! -f "$catdir/_category_.json" ]; then
       # Routed to a category not declared in _categories — create + label it so
       # the build stays valid (placed after the declared categories).
-      label="$(printf '%s' "$cat_folder" | sed -E 's/[-_]/ /g; s/(^| )([a-z])/\1\U\2/g')"
+      label="$(label_from_name "$cat_folder")"
       mkdir -p "$catdir"
       [ -f "$catdir/index.md" ] || printf '# %s\n' "$label" > "$catdir/index.md"
       write_category "$catdir" "$label" 90
@@ -567,6 +616,20 @@ if [ -d "$DOCS_DEST/$JME_DIR" ]; then
 JSON
   done < <(printf '%s\n' "$DOCS_DEST/$JME_DIR"/*/ | LC_ALL=C sort)
 fi
+
+# ---------------------------------------------------------------------------
+# 2f. Nested order manifests — every folder below the root that ships an
+#     `_order` orders its own direct children (format and rules: section 1).
+#     Runs after step 2 so a manifest inside a repo section is found at the
+#     section's final location (routed sections were moved), and before 2d so
+#     the getting-started pin still wins over a manifest position. A folder
+#     entry replaces the folder's category metadata as a whole, so a listed
+#     repo section takes its label from its index.md title (the README heading)
+#     instead of the repo name written in step 2, unless `| Label` is given.
+# ---------------------------------------------------------------------------
+while IFS= read -r -d '' manifest; do
+  apply_order_manifest "$(dirname "$manifest")" nested
+done < <(find "$DOCS_DEST" -mindepth 2 -type f -name '_order' -print0 | LC_ALL=C sort -z)
 
 # ---------------------------------------------------------------------------
 # 2d. Pin "Getting started" first within its section — applied tree-wide, so
