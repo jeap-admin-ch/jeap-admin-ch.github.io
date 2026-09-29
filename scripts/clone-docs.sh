@@ -52,11 +52,13 @@
 #                  Each is assembled from its working tree (uncommitted edits
 #                  included) instead of being cloned, and the same-named repo is
 #                  skipped during auto-discovery so the local copy wins. The
-#                  section name is the directory basename. Placement is detected
-#                  from the checkout: a top-level docs/_order file (the umbrella's
-#                  order manifest) means root placement; otherwise the repo is
-#                  placed as its own nested section (docs/<name>/), README as the
-#                  landing page — exactly like an auto-discovered repo.
+#                  section name is the directory basename. Placement follows the
+#                  REPOS manifest: a checkout of a repo the manifest places at
+#                  the root (identified by its git remote "origin", or by the
+#                  directory name when it has no origin) lands at the site root;
+#                  any other checkout is placed as its own nested section
+#                  (docs/<name>/), README as the landing page — exactly like an
+#                  auto-discovered repo.
 #                  Default: empty.
 #   JME_ORG        GitHub org to auto-discover JME example repos from.
 #                  Default: jme-admin-ch
@@ -114,8 +116,9 @@ Environment variables (defaults in brackets):
                   their working tree (uncommitted edits included) instead of
                   cloned; the same-named repo is skipped during auto-discovery so
                   the local copy wins. Section name = directory basename; a
-                  checkout whose docs/ ships an _order manifest lands at the site
-                  root, others as nested sections. []
+                  checkout of a repo that REPOS places at the root (by its git
+                  remote "origin", or its directory name without one) lands at
+                  the site root, others as nested sections. []
   JME_ORG         GitHub org to auto-discover JME example repos from. [jme-admin-ch]
   JME_REPO_BASE_URL  Base URL/prefix JME repos are cloned from. [https://github.com/<JME_ORG>]
   JME_DIR         Destination folder JME repo sections nest under. [jme-examples]
@@ -257,16 +260,52 @@ aggregate_nested_repo() {
   place_nested_from_checkout "$name" "$checkout" "$dest_parent"
 }
 
+# The repository a local checkout is a checkout OF: the last path segment of
+# its "origin" remote URL with a trailing ".git" stripped (covers
+# https://host/org/repo, git@host:org/repo and file:// URLs), or the directory
+# basename when the path has no origin (a plain copy, a fresh repo). The remote
+# wins over the directory name because a checkout can be named anything. The
+# origin is consulted only when the path is the top of its own work tree —
+# `git config` would otherwise walk up and report the origin of an enclosing
+# repository for a plain copy placed inside it.
+checkout_repo_name() {  # <path>
+  local path="$1" url="" toplevel
+  toplevel="$(git -C "$path" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -n "$toplevel" ] && [ "$toplevel" = "$(cd "$path" && pwd -P)" ]; then
+    url="$(git -C "$path" config --get remote.origin.url 2>/dev/null || true)"
+  fi
+  if [ -n "$url" ]; then
+    url="$(printf '%s' "$url" | sed -E 's#/+$##; s#\.git$##')"
+    printf '%s' "${url##*[/:]}"
+  else
+    basename "$path"
+  fi
+}
+
+# Does the static REPOS manifest place repo $1 at the root?
+is_root_repo() {  # <name>
+  local entry
+  for entry in $REPOS; do
+    [ "${entry%%:*}" = "$1" ] && [ "${entry##*:}" = "root" ] && return 0
+  done
+  return 1
+}
+
+# Is the local checkout at $1 a checkout of a root-placed repo (the umbrella)?
+is_root_checkout() {  # <path>
+  is_root_repo "$(checkout_repo_name "$1")"
+}
+
 # Assemble a repo from a LOCAL checkout (working tree, uncommitted edits
 # included) instead of cloning it. The section name is the directory basename.
-# A top-level docs/_order file (the umbrella's order manifest) selects root
-# placement; otherwise the repo is placed as its own nested section.
+# A checkout of a repo the REPOS manifest places at the root lands at the root;
+# any other checkout is placed as its own nested section.
 aggregate_local_repo() {
   local path="$1"
   [ -d "$path/docs" ] || die "LOCAL_REPOS entry '$path' has no docs/ directory"
   local name; name="$(basename "$path")"
 
-  if [ -f "$path/docs/_order" ]; then
+  if is_root_checkout "$path"; then
     log "Placing LOCAL $name docs/ at the top level of $DOCS_DEST (working tree, incl. uncommitted changes)"
     cp -R "$path/docs/." "$DOCS_DEST/"
   else
@@ -302,15 +341,15 @@ is_local() {
   return 1
 }
 
-# Does any LOCAL_REPOS checkout resolve to root placement (umbrella / _order)?
-# Such a local override replaces the default static root manifest clone.
-local_has_root=false
-for path in $LOCAL_REPOS; do
-  if [ -f "$path/docs/_order" ]; then
-    local_has_root=true
-    break
-  fi
-done
+# Is root-placed repo $1 provided by a LOCAL_REPOS checkout? Such a local
+# override replaces that repo's static manifest clone (and only that one).
+local_provides_root() {  # <name>
+  local path
+  for path in $LOCAL_REPOS; do
+    [ -d "$path/docs" ] && [ "$(checkout_repo_name "$path")" = "$1" ] && return 0
+  done
+  return 1
+}
 
 # Local overrides first: a local root override (umbrella) replaces the static
 # root manifest clone below; nested locals are skipped during auto-discovery.
@@ -323,8 +362,8 @@ for entry in $REPOS; do
   name="${entry%%:*}"
   placement="${entry##*:}"
   [ -n "$name" ] || continue
-  # A local umbrella (root placement via _order) supersedes the static root clone.
-  if [ "$placement" = "root" ] && [ "$local_has_root" = "true" ]; then
+  # A local umbrella supersedes the static clone of the same repo.
+  if [ "$placement" = "root" ] && local_provides_root "$name"; then
     log "Skipping static manifest '$name' (root docs provided by a LOCAL_REPOS checkout)"
     continue
   fi

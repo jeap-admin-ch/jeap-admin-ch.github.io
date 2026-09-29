@@ -16,7 +16,8 @@ set -uo pipefail
 
 command -v git >/dev/null || skip "git not available"
 
-# An umbrella repo: docs/ with an _order manifest, copied to the docs root.
+# An umbrella repo: docs/ with an _order manifest; placed at the docs root when
+# the REPOS manifest names it as the root repo.
 make_umbrella() {  # <dir>
   git_repo "$1" \
     'README.md=# Umbrella' \
@@ -114,11 +115,13 @@ test_the_branch_applies_to_the_static_manifest() {
 # LOCAL_REPOS — assembled from a working tree, not cloned (what --local backs)
 # ---------------------------------------------------------------------------
 test_a_local_repo_is_assembled_as_a_nested_section_with_the_readme_as_landing_page() {
+  make_umbrella "$TMP_DIR/src/umbrella"
   make_repo "$TMP_DIR/src/demo"
   # Uncommitted edits must be visible: that is the point of --local.
   printf '# Uncommitted\n' > "$TMP_DIR/src/demo/docs/scratch.md"
 
-  run_clone LOCAL_REPOS="$TMP_DIR/src/demo" AUTODISCOVER=false REPOS=""
+  run_clone LOCAL_REPOS="$TMP_DIR/src/demo" AUTODISCOVER=false \
+            REPOS="umbrella:root" REPO_BASE_URL="file://$TMP_DIR/src"
 
   assert_contains "$(section_dir demo)/index.md" '# Demo repo' 'the README becomes the landing page'
   assert_file "$(section_dir demo)/usage.md"
@@ -126,12 +129,14 @@ test_a_local_repo_is_assembled_as_a_nested_section_with_the_readme_as_landing_pa
 }
 
 test_a_local_repo_shipping_its_own_docs_index_has_it_demoted() {
+  make_umbrella "$TMP_DIR/src/umbrella"
   git_repo "$TMP_DIR/src/demo" \
     'README.md=# Demo repo' \
     'docs/index.md=# Module overview' \
     'docs/usage.md=# Usage'
 
-  run_clone LOCAL_REPOS="$TMP_DIR/src/demo" AUTODISCOVER=false REPOS=""
+  run_clone LOCAL_REPOS="$TMP_DIR/src/demo" AUTODISCOVER=false \
+            REPOS="umbrella:root" REPO_BASE_URL="file://$TMP_DIR/src"
 
   # The README wins the index.md slot; the repo's own index is renamed, which is
   # what prepare-docs.sh's docs/index.md -> ./modules.md rewrite relies on.
@@ -139,22 +144,100 @@ test_a_local_repo_shipping_its_own_docs_index_has_it_demoted() {
   assert_contains "$(section_dir demo)/modules.md" '# Module overview'
 }
 
-test_a_local_repo_with_an_order_manifest_is_placed_at_the_root() {
+# Root placement of a local checkout follows the REPOS manifest: a checkout OF
+# a root-placed repo lands at the root. Without a git remote the directory name
+# identifies the repo.
+test_a_local_checkout_named_like_the_root_repo_is_placed_at_the_root() {
   make_umbrella "$TMP_DIR/src/umbrella"
 
-  run_clone LOCAL_REPOS="$TMP_DIR/src/umbrella" AUTODISCOVER=false REPOS=""
+  run_clone LOCAL_REPOS="$TMP_DIR/src/umbrella" AUTODISCOVER=false \
+            REPOS="umbrella:root" REPO_BASE_URL="file://$TMP_DIR/nowhere"
 
-  assert_file "$(docs_dest)/_order"          'an _order manifest selects root placement'
-  assert_file "$(docs_dest)/what-is-jeap.md"
+  assert_file "$(docs_dest)/what-is-jeap.md" 'copied to the root'
   assert_no_file "$(section_dir umbrella)/index.md" 'it must not also become a section'
+}
+
+# With a remote, the remote identifies the repo, so the checkout directory may
+# be called anything (the documented `--local ../jeap-admin-ch` case).
+test_a_local_checkout_is_identified_by_its_git_remote() {
+  # Deliberately no _order in this fixture: the remote alone must decide.
+  git_repo "$TMP_DIR/src/my-work-dir" 'docs/what-is-jeap.md=# What is jEAP'
+  git -C "$TMP_DIR/src/my-work-dir" remote add origin https://github.com/jeap-admin-ch/umbrella.git
+
+  run_clone LOCAL_REPOS="$TMP_DIR/src/my-work-dir" AUTODISCOVER=false \
+            REPOS="umbrella:root" REPO_BASE_URL="file://$TMP_DIR/nowhere"
+
+  assert_file "$(docs_dest)/what-is-jeap.md" 'the remote selects root placement'
+  assert_no_file "$(section_dir my-work-dir)/index.md"
+}
+
+test_the_git_remote_wins_over_a_misleading_directory_name() {
+  make_umbrella "$TMP_DIR/src/umbrella"             # the real root repo, cloned over file://
+  make_repo "$TMP_DIR/local/umbrella"               # a local dir named like it ...
+  git -C "$TMP_DIR/local/umbrella" remote add origin git@github.com:jeap-admin-ch/demo.git   # ... but a checkout of demo
+
+  run_clone LOCAL_REPOS="$TMP_DIR/local/umbrella" AUTODISCOVER=false \
+            REPOS="umbrella:root" REPO_BASE_URL="file://$TMP_DIR/src"
+
+  assert_file "$(section_dir umbrella)/index.md" 'the impostor is a nested section'
+  assert_file "$(docs_dest)/what-is-jeap.md"     'the real umbrella was still cloned'
+  assert_no_file "$(docs_dest)/usage.md"         'nothing of the impostor at the root'
+}
+
+# `git config` looks upwards for a repository, so a plain copy of a repo's docs
+# inside some other checkout must not inherit that checkout's origin.
+test_a_plain_directory_inside_another_checkout_is_identified_by_its_own_name() {
+  make_umbrella "$TMP_DIR/src/umbrella"
+  git_repo "$TMP_DIR/host" 'README.md=# Host repo'
+  git -C "$TMP_DIR/host" remote add origin https://github.com/jeap-admin-ch/umbrella.git
+  mkdir -p "$TMP_DIR/host/copies/demo/docs"          # not a git checkout of its own
+  printf '# Demo\n'  > "$TMP_DIR/host/copies/demo/README.md"
+  printf '# Usage\n' > "$TMP_DIR/host/copies/demo/docs/usage.md"
+
+  run_clone LOCAL_REPOS="$TMP_DIR/host/copies/demo" AUTODISCOVER=false \
+            REPOS="umbrella:root" REPO_BASE_URL="file://$TMP_DIR/src"
+
+  assert_file "$(section_dir demo)/usage.md"     'placed as a nested section by its own name'
+  assert_file "$(docs_dest)/what-is-jeap.md"     'the real umbrella was still cloned'
+}
+
+# A local checkout replaces only the static root entry it is a checkout of.
+test_a_local_root_checkout_replaces_only_its_own_static_entry() {
+  make_umbrella "$TMP_DIR/src/umbrella"
+  git_repo "$TMP_DIR/src/extra" 'docs/extra-page.md=# Extra root content'
+  make_umbrella "$TMP_DIR/local/umbrella"
+
+  run_clone LOCAL_REPOS="$TMP_DIR/local/umbrella" AUTODISCOVER=false \
+            REPOS="umbrella:root extra:root" REPO_BASE_URL="file://$TMP_DIR/src"
+
+  assert_output "Skipping static manifest 'umbrella'"
+  assert_file "$(docs_dest)/what-is-jeap.md" 'the local umbrella provided the root docs'
+  assert_file "$(docs_dest)/extra-page.md"   'the other root entry is still cloned'
+}
+
+# An _order manifest is ordering metadata, not a placement marker: a regular
+# repo may ship one at the root of its docs/ and still be a nested section.
+test_a_local_repo_shipping_an_order_manifest_is_still_a_nested_section() {
+  make_umbrella "$TMP_DIR/src/umbrella"
+  git_repo "$TMP_DIR/src/demo" \
+    'README.md=# Demo repo' \
+    'docs/_order=usage' \
+    'docs/usage.md=# Usage'
+
+  run_clone LOCAL_REPOS="$TMP_DIR/src/demo" AUTODISCOVER=false \
+            REPOS="umbrella:root" REPO_BASE_URL="file://$TMP_DIR/src"
+
+  assert_file "$(section_dir demo)/_order"  'the manifest travels with the section'
+  assert_file "$(section_dir demo)/index.md"
+  assert_no_file "$(docs_dest)/usage.md"    'not treated as the umbrella'
 }
 
 # A local umbrella is the offline `--local <umbrella> --no-autodiscover` case:
 # it must replace the static root clone, or the script would still hit GitHub.
 test_a_local_umbrella_supersedes_the_static_root_manifest() {
-  make_umbrella "$TMP_DIR/src/umbrella"
+  make_umbrella "$TMP_DIR/src/jeap"
 
-  run_clone LOCAL_REPOS="$TMP_DIR/src/umbrella" AUTODISCOVER=false \
+  run_clone LOCAL_REPOS="$TMP_DIR/src/jeap" AUTODISCOVER=false \
             REPOS="jeap:root" REPO_BASE_URL="file://$TMP_DIR/nowhere"
 
   assert_output 'Skipping static manifest'
@@ -257,7 +340,8 @@ Boilerplate.' \
     'docs/usage.md=# Usage' \
     'docs/getting-started.md=# Getting started'
 
-  run_clone LOCAL_REPOS="$TMP_DIR/src/umbrella $TMP_DIR/src/demo" AUTODISCOVER=false REPOS=""
+  run_clone LOCAL_REPOS="$TMP_DIR/src/umbrella $TMP_DIR/src/demo" AUTODISCOVER=false \
+            REPOS="umbrella:root" REPO_BASE_URL="file://$TMP_DIR/nowhere"
   run_prepare
 
   assert_contains "$(docs_dest)/what-is-jeap.md" 'sidebar_position: 1' 'umbrella ordering applied'

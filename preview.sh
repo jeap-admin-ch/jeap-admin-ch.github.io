@@ -9,8 +9,9 @@
 #   --local <path>   Serve a repo's docs from a LOCAL checkout (working tree,
 #                    uncommitted edits included) instead of cloning it from
 #                    GitHub. Repeatable. The section name is the directory
-#                    basename; the umbrella checkout (its docs/ ships an _order
-#                    manifest) is placed at the site root, any other repo as its
+#                    basename; the umbrella checkout (a checkout of the REPOS
+#                    root repo, recognized by its git remote "origin" or directory
+#                    name) is placed at the site root, any other repo as its
 #                    own nested section.
 #   --no-autodiscover  Skip GitHub org auto-discovery (AUTODISCOVER=false); the
 #                    umbrella still comes from GitHub unless a --local umbrella
@@ -41,7 +42,8 @@ Options:
   --local <path>     Serve a repo's docs from a LOCAL checkout (working tree,
                      uncommitted edits included) instead of cloning it from
                      GitHub. Repeatable. Section name = directory basename; the
-                     umbrella checkout (its docs/ ships an _order manifest) lands
+                     umbrella checkout (a checkout of the REPOS root repo,
+                     recognized by its git remote "origin" or directory name) lands
                      at the site root, any other repo as its own nested section.
                      Everything else is still cloned/auto-discovered from GitHub.
   --no-autodiscover  Skip GitHub org auto-discovery: assemble only the umbrella +
