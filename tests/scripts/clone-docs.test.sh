@@ -264,6 +264,102 @@ test_autodiscovery_stays_off_when_disabled() {
 }
 
 # ---------------------------------------------------------------------------
+# Diagrams — a diagram is committed as a source plus the image exported from it
+# by hand. clone-docs.sh is where both halves of that convention are enforced:
+# it refuses a repo whose source outlives its export, and it keeps the sources
+# out of the tree it assembles. The rule itself is covered by
+# check-diagram-sources.test.sh; what matters here is that the clone step
+# actually applies it, to clones and to LOCAL_REPOS alike.
+# ---------------------------------------------------------------------------
+
+# A repo with one diagram, source and image committed together.
+make_diagram_repo() {  # <dir>
+  git_repo "$1" \
+    'README.md=# Diagram repo' \
+    'docs/architecture.md=# Architecture' \
+    'docs/images/overview.drawio=<mxfile><diagram>v1</diagram></mxfile>' \
+    'docs/images/overview.svg=<svg>v1</svg>'
+}
+
+# Commit a change to the diagram source without re-exporting the image.
+leave_the_export_behind() {  # <dir>
+  printf '<mxfile><diagram>v2</diagram></mxfile>\n' > "$1/docs/images/overview.drawio"
+  git -C "$1" add -A
+  git -C "$1" -c user.email=t@example.org -c user.name=Test commit -qm 'reworked the diagram'
+}
+
+test_the_diagram_sources_are_kept_out_of_the_assembled_tree() {
+  make_diagram_repo "$TMP_DIR/src/demo"
+
+  run_clone REPO_BASE_URL="file://$TMP_DIR/src" REPOS="demo:nested" AUTODISCOVER=false
+
+  assert_file "$(section_dir demo)/images/overview.svg" 'the page needs the exported picture'
+  assert_no_file "$(section_dir demo)/images/overview.drawio" \
+    'the editor file cannot be shown in a browser and must not be published'
+}
+
+test_the_diagram_sources_are_kept_out_of_a_root_placed_repo_too() {
+  git_repo "$TMP_DIR/src/umbrella" \
+    'README.md=# Umbrella' \
+    'docs/_order=what-is-jeap' \
+    'docs/what-is-jeap.md=# What is jEAP' \
+    'docs/images/overview.drawio=<mxfile/>' \
+    'docs/images/overview.svg=<svg/>'
+
+  run_clone REPO_BASE_URL="file://$TMP_DIR/src" REPOS="umbrella:root" AUTODISCOVER=false
+
+  assert_file "$(docs_dest)/images/overview.svg"
+  assert_no_file "$(docs_dest)/images/overview.drawio"
+}
+
+test_a_diagram_whose_image_was_not_re_exported_fails_the_clone_step() {
+  make_diagram_repo "$TMP_DIR/src/demo"
+  leave_the_export_behind "$TMP_DIR/src/demo"
+
+  run_clone_expecting_failure REPO_BASE_URL="file://$TMP_DIR/src" \
+    REPOS="demo:nested" AUTODISCOVER=false
+
+  [ "$LAST_STATUS" -ne 0 ] || fail "a stale diagram must fail the build, got status 0"
+  assert_output 'STALE: images/overview.drawio'
+  assert_output "the diagrams of 'demo' are not exported up to date"
+}
+
+test_an_up_to_date_diagram_in_a_depth_one_clone_is_dated_by_deepening() {
+  make_diagram_repo "$TMP_DIR/src/demo"
+  # Bury the diagram under enough history that the depth-1 clone the script does
+  # cannot see the commit that wrote it.
+  local i
+  for i in 1 2 3 4 5; do
+    printf 'entry %s\n' "$i" > "$TMP_DIR/src/demo/docs/changelog.md"
+    git -C "$TMP_DIR/src/demo" add -A
+    git -C "$TMP_DIR/src/demo" -c user.email=t@example.org -c user.name=Test commit -qm "entry $i"
+  done
+
+  run_clone REPO_BASE_URL="file://$TMP_DIR/src" REPOS="demo:nested" AUTODISCOVER=false
+
+  assert_output 'Deepening demo'
+  assert_output 'All 1 diagram(s) are exported up to date'
+  assert_file "$(section_dir demo)/images/overview.svg"
+}
+
+test_a_local_checkout_keeps_its_diagram_sources_on_disk() {
+  make_umbrella "$TMP_DIR/src/umbrella"
+  make_diagram_repo "$TMP_DIR/src/demo"
+  # --local exists to preview uncommitted work, so an edited diagram whose image
+  # is not exported yet is the normal state here and must not fail the preview.
+  printf '<mxfile><diagram>wip</diagram></mxfile>\n' > "$TMP_DIR/src/demo/docs/images/overview.drawio"
+
+  run_clone REPO_BASE_URL="file://$TMP_DIR/src" REPOS="umbrella:root" \
+            AUTODISCOVER=false LOCAL_REPOS="$TMP_DIR/src/demo"
+
+  assert_file "$TMP_DIR/src/demo/docs/images/overview.drawio" \
+    'the working tree of a local checkout is never written to'
+  assert_no_file "$(section_dir demo)/images/overview.drawio" \
+    'but the assembled preview still shows what the site would'
+  assert_file "$(section_dir demo)/images/overview.svg"
+}
+
+# ---------------------------------------------------------------------------
 # JME auto-discovery — a second, independent org pass. AUTODISCOVER_JME
 # defaults to AUTODISCOVER, so the off-by-default umbrella-only tests above
 # already leave it disabled; these tests exercise it explicitly with a fake
