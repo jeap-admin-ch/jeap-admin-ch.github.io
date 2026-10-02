@@ -13,9 +13,10 @@
 #
 # Provided by this file:
 #   Assertions   assert_eq, assert_contains, assert_not_contains, assert_file,
-#                assert_no_file, assert_dir, assert_link, assert_json_field
+#                assert_no_file, assert_dir, assert_link, assert_json_field,
+#                assert_output, assert_status
 #   Fixtures     doc (write a file below $DOCS_DEST), repo_section, git_repo
-#   Runners      run_prepare, run_clone
+#   Runners      run_prepare, run_clone, run_clone_expecting_failure, run_check
 #   Utilities    fail, skip, docs_dest, section_dir
 #
 set -uo pipefail
@@ -177,6 +178,34 @@ run_clone() {  # [VAR=value ...]
   LAST_STATUS=$?
   [ "$LAST_STATUS" -eq 0 ] || fail "clone-docs.sh exited with status $LAST_STATUS
 $(printf '%s\n' "$LAST_OUTPUT" | sed 's/^/      /')"
+  return 0
+}
+
+# Invoke scripts/check-diagram-sources.sh. Unlike the two runners above, a
+# non-zero status is the expected outcome of half its cases (a stale diagram has
+# to fail the build), so the status is only recorded in $LAST_STATUS — assert it
+# with assert_status.
+run_check() {  # <subcommand> [arg ...]
+  LAST_OUTPUT="$(bash "$SCRIPTS_DIR/check-diagram-sources.sh" "$@" 2>&1)"
+  LAST_STATUS=$?
+  return 0
+}
+
+# Assert the exit status of the last runner.
+assert_status() {  # <expected> [label]
+  [ "$LAST_STATUS" = "$1" ] && return 0
+  fail "${2:-unexpected exit status}
+    expected: $1
+    actual:   $LAST_STATUS
+    output:
+$(printf '%s\n' "$LAST_OUTPUT" | sed 's/^/      /')"
+}
+
+# Run a clone-docs.sh invocation that is expected to FAIL, without the automatic
+# status assertion of run_clone.
+run_clone_expecting_failure() {  # [VAR=value ...]
+  LAST_OUTPUT="$(env DOCS_DEST="$DOCS_DEST" "$@" bash "$SCRIPTS_DIR/clone-docs.sh" 2>&1)"
+  LAST_STATUS=$?
   return 0
 }
 
