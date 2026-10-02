@@ -16,6 +16,7 @@ Aggregation is a two-step pipeline (kept as two scripts so each step can run ind
 |---|---|
 | `scripts/clone-docs.sh` | **Clone** the jEAP repos and copy their `docs/` into this repo's `docs/`. Three sources: the static `REPOS` manifest (the umbrella's general doc at the top level), **auto-discovery** — enumerating the `jeap-admin-ch` GitHub org and pulling in every repo that ships a top-level `docs/` dir as its own section under `docs/<repo>/`, with the repo's `README.md` as the landing page — and a second **JME auto-discovery** pass that enumerates the `jme-admin-ch` org (jEAP Microservice Examples) and pulls in every repo (README-only is fine — most JME repos have no `docs/` dir) as its own section under `docs/jme-examples/<repo>/`. Raw content only. |
 | `scripts/prepare-docs.sh` | **Transform** the assembled `docs/` for the site: inject sidebar ordering from the `_order` manifests (the umbrella's top-level one and the one any nested folder may ship for its own children, plus pinning a `getting-started` page first within its section), write category metadata, generate the JME Examples section's landing page, and rewrite links that are valid on GitHub but would break in Docusaurus. Operates in place, so it can also run on a `docs/` tree you copied in manually (skipping the clone step). |
+| `scripts/check-diagram-sources.sh` | **Enforce the diagram convention**, called by `clone-docs.sh` for every repo it clones. A jEAP diagram is committed as two files side by side — the editable source (`images/x.drawio`) and the image exported from it by hand (`images/x.svg`) — so the failure mode is forgetting to re-export, which would leave the site showing the old picture indefinitely. The script fails the build when a source was committed after its image, and takes the sources out of the assembled tree (the site publishes pictures, not editor files). Also usable on its own: `sources`/`pairs` to list what it found, `prune` to drop the sources from a tree, `check` to verify one checkout. |
 
 Both are configurable via environment variables — see the header comment in each script. `clone-docs.sh`
 reads `REPO_BASE_URL`, `BRANCH`, `REPOS`, `DOCS_DEST`, plus the auto-discovery settings `ORG`,
@@ -138,7 +139,9 @@ bash tests/scripts/run.sh prepare     # only suites whose name matches "prepare"
 ```
 
 Add a test alongside any change to the rewrite rules in `scripts/prepare-docs.sh` — that is where the
-breakage risk is concentrated.
+breakage risk is concentrated. The same goes for the pairing rule in `scripts/check-diagram-sources.sh`:
+`tests/scripts/check-diagram-sources.test.sh` builds real git repositories with real commits, because a
+date check is the kind of thing that keeps passing once it stops working.
 
 ## Deployment
 
@@ -159,7 +162,8 @@ The workflow:
 ├── .github/workflows/deploy.yml   # GitHub Pages deployment workflow
 ├── scripts/
 │   ├── clone-docs.sh              # Step 1: clone source repos, assemble docs/
-│   └── prepare-docs.sh            # Step 2: transform docs/ for the site
+│   ├── prepare-docs.sh            # Step 2: transform docs/ for the site
+│   └── check-diagram-sources.sh   # Diagram source/image pairing (called by step 1)
 ├── docs/                          # Documentation from jEAP repositories (git-ignored; do not edit)
 ├── blog/                          # Blog posts (committed; see "Blog" section above)
 ├── src/
