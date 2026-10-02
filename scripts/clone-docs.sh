@@ -15,6 +15,16 @@
 #   1. clone-docs.sh    — fetch raw docs/ content from the source repos (this script)
 #   2. prepare-docs.sh  — transform the assembled content for GitHub Pages
 #
+# Diagrams: a jEAP diagram is committed as two files side by side, the editable
+# source (images/x.drawio) and the image exported from it (images/x.svg). This
+# script checks every cloned repo for a source that was committed after its
+# image — the author forgot to re-export, and the site would go on showing the
+# old picture — and fails the build when it finds one. The sources themselves are
+# dropped from the assembled tree; the site publishes pictures, not editor files.
+# The rule and the check live in check-diagram-sources.sh. Repos are still cloned
+# at depth 1; only a repo that actually ships a diagram gets deepened, and only
+# as far as dating that diagram takes.
+#
 # The script assembles content from three sources:
 #   1. The static REPOS manifest (the umbrella general doc, placed at root).
 #   2. Auto-discovery: every repo in the GitHub org that ships a top-level docs/
@@ -166,6 +176,35 @@ die()  { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 command -v git >/dev/null || die "git not found"
 
+CHECK_DIAGRAMS="$SCRIPT_DIR/check-diagram-sources.sh"
+[ -f "$CHECK_DIAGRAMS" ] || die "missing $CHECK_DIAGRAMS"
+
+# Verify the diagram source/image pairs of a freshly cloned repo, then take the
+# sources out of what will be published. A jEAP diagram is committed twice: the
+# editable source (images/x.drawio) and the image exported from it (images/x.svg).
+# The export is manual, so the failure mode is forgetting it — and the site would
+# then keep showing the old picture with nobody noticing. See
+# check-diagram-sources.sh for the pairing rule.
+#
+# --deepen is what keeps this affordable: the repos are cloned at depth 1, which
+# cannot date a file (git log answers with the boundary commit for everything
+# older), so the checker deepens — but only the repos that actually ship a
+# diagram, and only as far as dating that diagram needs. A repo without one never
+# fetches a second commit.
+check_diagrams() {  # <checkout> [<subdir>]
+  local checkout="$1" subdir="${2:-docs}"
+  bash "$CHECK_DIAGRAMS" check --deepen "$checkout" "$subdir" \
+    || die "the diagrams of '$(basename "$checkout")' are not exported up to date (see above)"
+}
+
+# Drop the diagram sources from an assembled destination tree: the site publishes
+# the pictures, not the editor files the authors keep next to them. Runs on the
+# destination rather than the checkout so a LOCAL_REPOS working tree is never
+# written to.
+prune_diagrams() {  # <tree>
+  bash "$CHECK_DIAGRAMS" prune "$1" || die "cannot prune the diagram sources in $1"
+}
+
 # Fresh temporary workspace for the clones; always cleaned up on exit.
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -190,17 +229,21 @@ aggregate_one() {
     return 0
   fi
 
+  check_diagrams "$checkout"
+
   case "$placement" in
     root)
       log "Placing $name docs/ at the top level of $DOCS_DEST"
       # Trailing /. copies the directory contents (incl. subfolders) without
       # nesting an extra docs/ level.
       cp -R "$checkout/docs/." "$DOCS_DEST/"
+      prune_diagrams "$DOCS_DEST"
       ;;
     nested)
       log "Placing $name docs/ under $DOCS_DEST/$name/"
       mkdir -p "$DOCS_DEST/$name"
       cp -R "$checkout/docs/." "$DOCS_DEST/$name/"
+      prune_diagrams "$DOCS_DEST/$name"
       ;;
     *)
       die "Unknown placement '$placement' for repo '$name' (use root|nested)"
@@ -223,6 +266,7 @@ place_nested_from_checkout() {
   if [ -d "$checkout/docs" ]; then
     log "Placing $name docs/ under $dest/ (README as landing page)"
     cp -R "$checkout/docs/." "$dest/"
+    prune_diagrams "$dest"
     # README always wins the index.md slot; demote a repo-provided docs/index.md.
     if [ -f "$dest/index.md" ]; then
       mv "$dest/index.md" "$dest/modules.md"
@@ -256,6 +300,8 @@ aggregate_nested_repo() {
     warn "$name has no docs/ directory — skipping"
     return 0
   fi
+
+  [ -d "$checkout/docs" ] && check_diagrams "$checkout"
 
   place_nested_from_checkout "$name" "$checkout" "$dest_parent"
 }
@@ -300,6 +346,12 @@ is_root_checkout() {  # <path>
 # included) instead of cloning it. The section name is the directory basename.
 # A checkout of a repo the REPOS manifest places at the root lands at the root;
 # any other checkout is placed as its own nested section.
+#
+# The diagram export check is deliberately NOT run here: the point of --local is
+# to see uncommitted edits, and an edited diagram whose image is not re-exported
+# yet is the normal state of the work in progress this mode exists for. The
+# sources are still kept out of the assembled tree, so a local preview shows the
+# same pages the site will.
 aggregate_local_repo() {
   local path="$1"
   [ -d "$path/docs" ] || die "LOCAL_REPOS entry '$path' has no docs/ directory"
@@ -308,6 +360,7 @@ aggregate_local_repo() {
   if is_root_checkout "$path"; then
     log "Placing LOCAL $name docs/ at the top level of $DOCS_DEST (working tree, incl. uncommitted changes)"
     cp -R "$path/docs/." "$DOCS_DEST/"
+    prune_diagrams "$DOCS_DEST"
   else
     log "Placing LOCAL $name docs/ as a nested section (working tree, incl. uncommitted changes)"
     place_nested_from_checkout "$name" "$path"

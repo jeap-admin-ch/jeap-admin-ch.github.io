@@ -22,7 +22,7 @@ Raw npm scripts (`npm start` / `npm run build` / `npm run serve`) assume deps ar
 | `npm run test:components` | React components (Vitest + Testing Library, `src/**/*.test.{js,jsx}`, config in `vitest.config.mjs`) |
 | `npm run test:scripts` | The docs pipeline scripts (`tests/scripts/*.test.sh`, plain bash — no extra deps) |
 
-The script tests drive the **real** `scripts/*.sh` against fixture trees in a temp directory (`clone-docs.sh` is pointed at throwaway local git repos via `REPO_BASE_URL="file://…"` with `AUTODISCOVER=false`, so nothing hits the network or needs `gh`). The rewrite rules are never re-implemented in the tests, so a test can only pass if the script itself behaves as asserted. Run one suite with `bash tests/scripts/run.sh prepare`. **Change a rewrite rule in `prepare-docs.sh` and you must update or extend `tests/scripts/prepare-docs-links.test.sh`** — those regexes are the pipeline's most breakage-prone part, and a wrong rule surfaces only as a broken link in some unrelated repo's section days later.
+The script tests drive the **real** `scripts/*.sh` against fixture trees in a temp directory (`clone-docs.sh` is pointed at throwaway local git repos via `REPO_BASE_URL="file://…"` with `AUTODISCOVER=false`, so nothing hits the network or needs `gh`). The rewrite rules are never re-implemented in the tests, so a test can only pass if the script itself behaves as asserted. Run one suite with `bash tests/scripts/run.sh prepare`. **Change a rewrite rule in `prepare-docs.sh` and you must update or extend `tests/scripts/prepare-docs-links.test.sh`** — those regexes are the pipeline's most breakage-prone part, and a wrong rule surfaces only as a broken link in some unrelated repo's section days later. The same applies to `check-diagram-sources.sh` and `tests/scripts/check-diagram-sources.test.sh`, whose git cases build real repositories with real commits — a date check is the kind of thing that keeps passing after it stops working.
 
 Both `dev.sh` and `preview.sh` accept `--local <path>` (repeatable) and `--no-autodiscover`:
 
@@ -35,7 +35,7 @@ Both `dev.sh` and `preview.sh` accept `--local <path>` (repeatable) and `--no-au
 
 ## The docs aggregation pipeline (the core mechanic)
 
-`docs/` is **generated and git-ignored** — never edit or commit files there; they are wiped and reassembled on every build. Two scripts run in sequence (split so each can run independently):
+`docs/` is **generated and git-ignored** — never edit or commit files there; they are wiped and reassembled on every build. Two scripts run in sequence (split so each can run independently), with a third called by the first:
 
 1. `scripts/clone-docs.sh` — assembles `docs/` from two sources:
    - **The static `REPOS` manifest** — clones the configured repos (depth-1, branch tip) and copies their `docs/` trees in. `root` placement copies to the top level; `nested` copies to `docs/<repo>/`. Default manifest is `jeap:root` (the umbrella repo's general doc).
@@ -51,6 +51,19 @@ Both `dev.sh` and `preview.sh` accept `--local <path>` (repeatable) and `--no-au
    building-blocks | Building Blocks
    ```
    Each entry names a top-level file or folder; its line number is the sidebar position. `| Label` (optional) sets a folder's category label. A file that already ships its own front matter wins over the manifest. Without `_order`, top-level entries fall back to Docusaurus' alphabetical order. The same manifest works in any **nested** folder: a folder that ships its own `_order` (a topic folder in the umbrella, or any folder of a repo's `docs/`, its root included) orders its direct children the same way; entries must name a direct child (no paths), nested categories start collapsed, and a folder entry without `| Label` gets no label so Docusaurus uses its `index.md` title. Nested manifests are applied after the repo sections are routed, and a `getting-started` pin still wins over them.
+
+3. `scripts/check-diagram-sources.sh` — called by `clone-docs.sh` for every repo it clones, and usable on its own (`sources`, `pairs`, `prune`, `check [--deepen] <repo> [<subdir>]`). A jEAP diagram is **two committed files in one folder**: the editable source (`images/x.drawio`) and the image exported from it by hand (`images/x.svg`). A file counts as a source when its name extends an image's stem (`<image-stem>.<anything>`) **and** its own extension is not one the doc service publishes (`md png jpg jpeg gif webp avif svg pdf txt csv json yaml yml`) — so `x.drawio` and the older `x.drawio.xml` both pair up, while `report.pdf` next to `report.svg` does not. The rule is about the name rather than a list of diagram tools on purpose: hand-exported images were chosen precisely so the convention works for any editor.
+
+   Two things it enforces: a **stale export fails the build** (the source was committed after its image — the author forgot to re-export, and the site would go on showing the old picture), and the **sources are pruned** from the assembled tree (an editor file cannot be opened in a browser). Pruning runs on the *destination*, so a `LOCAL_REPOS` working tree is never written to; the date check is skipped for `LOCAL_REPOS` entirely, since previewing uncommitted work is what that mode is for.
+
+   `scripts/check-diagram-sources.sh` is **shared verbatim** with `jeap-microservice-pipeline`
+   (`resources/ch/admin/bit/jeap/microservicepipeline/oss/check_diagram_sources.sh`), which runs it
+   as an open-source precondition on the author's own build — the two pipelines gate the same
+   convention and cannot depend on one another. `diff` between the two must be empty; change both in
+   one go. The same rule has a third implementation in Python for the doc pipeline of the business
+   applications (`jeap-python-pipeline-lib`, `src/jeap_pipeline/doc_diagram_sources.py`).
+
+   **Why commit dates and not mtimes**: git neither stores nor restores mtimes — a clone writes every file at checkout time, so in CI all mtimes are equal and their order is arbitrary. An mtime check would pass by luck. **Why `--deepen`**: in a depth-1 clone `git log -1 -- <path>` answers with the shallow boundary commit for everything older, which makes every pair look equally old and the check pass silently. So the checker detects a boundary-dated answer, deepens in rounds (64, 256, 1024, then `--unshallow`) until it has a real one, and **refuses to give a verdict** if it still does not. Repos are therefore still cloned at depth 1 and only a repo that actually ships a diagram ever fetches a second commit — which matters when the build clones ~70 of them.
 
 To assemble from a local checkout on a feature branch (`AUTODISCOVER=false` keeps it offline — otherwise it would enumerate the real GitHub org via `gh`):
 ```bash
