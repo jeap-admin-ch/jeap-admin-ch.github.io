@@ -96,26 +96,25 @@ die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 list_sources() {  # <tree>
   local tree="${1%/}"
   [ -d "$tree" ] || return 0
-  ( cd "$tree" && find . -type f -print | sed 's|^\./||' ) \
-    | LC_ALL=C sort \
-    | pair_up sources
+  ( cd "$tree" && find . -type f -print0 ) \
+    | LC_ALL=C sort -z \
+    | pair_up "${2:-sources}"
 }
 
 # Print "<source> <image>" for every pair found, one per line, sorted.
 list_pairs() {  # <tree>
   local tree="${1%/}"
   [ -d "$tree" ] || return 0
-  ( cd "$tree" && find . -type f -print | sed 's|^\./||' ) \
-    | LC_ALL=C sort \
-    | pair_up pairs
+  ( cd "$tree" && find . -type f -print0 ) \
+    | LC_ALL=C sort -z \
+    | pair_up "${2:-pairs}"
 }
 
-# The pairing rule itself, applied to a newline-separated list of relative paths
-# on stdin. Mode "sources" prints the source path alone, "pairs" prints
-# "<source> <image>". Kept in one awk program so the two callers above cannot
-# drift apart.
+# The pairing rule reads NUL-delimited paths. Human-readable modes print lines;
+# internal sources0/pairs0 modes preserve every filename byte using NUL records.
+# Never parse the human-readable pair output to drive validation or pruning.
 pair_up() {  # <sources|pairs>   (paths on stdin)
-  awk -v mode="$1" \
+  awk -v RS='\0' -v mode="$1" \
       -v published="$PUBLISHED_EXTENSIONS" \
       -v images="$IMAGE_EXTENSIONS" '
     BEGIN {
@@ -140,6 +139,7 @@ pair_up() {  # <sources|pairs>   (paths on stdin)
       return substr(name, 1, i - 1)
     }
     {
+      sub(/^\.\//, "", $0)
       path[NR] = $0
       d = dir($0); b = base($0)
       folder[NR] = d; name[NR] = b; extension[NR] = ext(b)
@@ -162,7 +162,9 @@ pair_up() {  # <sources|pairs>   (paths on stdin)
           if (length(s) > best_len) { best_len = length(s); best = j }
         }
         if (best == 0) continue
-        if (mode == "pairs") printf "%s %s\n", path[i], path[best]
+        if (mode == "pairs0") printf "%s%c%s%c", path[i], 0, path[best], 0
+        else if (mode == "sources0") printf "%s%c", path[i], 0
+        else if (mode == "pairs") printf "%s %s\n", path[i], path[best]
         else                 printf "%s\n", path[i]
       }
     }
@@ -175,11 +177,11 @@ pair_up() {  # <sources|pairs>   (paths on stdin)
 # something to tidy away here.
 prune_sources() {  # <tree>
   local tree="${1%/}" rel pruned=0
-  while IFS= read -r rel; do
+  while IFS= read -r -d '' rel; do
     [ -n "$rel" ] || continue
     rm -f "$tree/$rel" || die "cannot remove diagram source $tree/$rel"
     pruned=$((pruned + 1))
-  done < <(list_sources "$tree")
+  done < <(list_sources "$tree" sources0)
   [ "$pruned" -eq 0 ] || printf 'Pruned %s diagram source(s) from %s\n' "$pruned" "$tree"
 }
 
@@ -192,7 +194,7 @@ is_shallow() {  # <repo>
 # matching. Empty for a complete repository.
 shallow_boundary() {  # <repo>
   local file
-  file="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)/shallow"
+  file="$(git -C "$1" rev-parse --path-format=absolute --git-path shallow 2>/dev/null)"
   [ -f "$file" ] || return 0
   printf ' %s ' "$(tr '\n' ' ' < "$file")"
 }
@@ -234,7 +236,7 @@ deepen_until_datable() {  # <repo> <path>...
   for depth in $DEEPEN_ROUNDS; do
     is_shallow "$repo" || return 0
     boundary_dated "$repo" "$@" || return 0
-    printf 'Deepening %s to %s commits to date its diagrams\n' "$(basename "$repo")" "$depth"
+   printf 'Deepening %s by %s commits to date its diagrams\n' "$(basename "$repo")" "$depth"
     git -C "$repo" fetch --quiet --deepen "$depth" 2>/dev/null || break
   done
 
@@ -272,21 +274,23 @@ check_tree() {  # [--deepen] <repo> [<subdir>]
   tree="${tree%/}"
   [ -d "$tree" ] || return 0
 
-  local pairs; pairs="$(list_pairs "$tree")"
-  if [ -z "$pairs" ]; then
+  local pairs=()
+  mapfile -d '' -t pairs < <(list_pairs "$tree" pairs0)
+  if [ "${#pairs[@]}" -eq 0 ]; then
     return 0
   fi
 
-  local count; count="$(printf '%s\n' "$pairs" | grep -c .)"
+  local count=$((${#pairs[@]} / 2))
   printf 'Checking %s diagram source/image pair(s) in %s\n' "$count" "${tree#"$repo"/}"
 
   git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 \
     || die "$tree holds $count diagram source/image pair(s) but $repo is not a git repository, so the export cannot be verified"
 
-  local paths=() source image
-  while read -r source image; do
+  local paths=() source image i
+  for ((i=0; i<${#pairs[@]}; i+=2)); do
+    source="${pairs[i]}"; image="${pairs[i+1]}"
     paths+=("$subdir/$source" "$subdir/$image")
-  done <<< "$pairs"
+  done
 
   [ "$deepen" = true ] && deepen_until_datable "$repo" "${paths[@]}"
 
@@ -296,7 +300,8 @@ Deepen the clone (this check does it itself when run with --deepen, the jEAP doc
   fi
 
   local stale=0 skipped=0 src_info img_info src_sha img_sha src_ts img_ts src_iso img_iso
-  while read -r source image; do
+  for ((i=0; i<${#pairs[@]}; i+=2)); do
+    source="${pairs[i]}"; image="${pairs[i+1]}"
     src_info="$(last_commit "$repo" "$subdir/$source")"
     img_info="$(last_commit "$repo" "$subdir/$image")"
     if [ -z "$src_info" ] || [ -z "$img_info" ]; then
@@ -313,7 +318,7 @@ Deepen the clone (this check does it itself when run with --deepen, the jEAP doc
       printf '    source last committed: %s (%s)\n' "$src_iso" "${src_sha:0:9}" >&2
       printf '    image  last committed: %s (%s)\n' "$img_iso" "${img_sha:0:9}" >&2
     fi
-  done <<< "$pairs"
+  done
 
   if [ "$stale" -gt 0 ]; then
     die "$stale diagram(s) were changed without re-exporting the image.
