@@ -332,4 +332,36 @@ test_deepen_leaves_a_repo_without_diagrams_at_depth_one() {
     'and keeps its single commit'
 }
 
+test_whitespace_paths_are_checked_and_pruned_without_splitting() {
+  local repo="$TMP_DIR/repo" name=$'images with spaces/overview\twith\nwhitespace'
+  put "$repo" "$name.drawio" 'original'
+  put "$repo" "$name.svg" '<svg/>'
+  git -C "$repo" init -q -b main
+  GIT_AUTHOR_DATE=2026-01-01T12:00:00Z GIT_COMMITTER_DATE=2026-01-01T12:00:00Z commit "$repo" 'paired'
+  run_check check "$repo" .
+  assert_status 0
+  put "$repo" "$name.drawio" 'changed'
+  GIT_AUTHOR_DATE=2026-01-02T12:00:00Z GIT_COMMITTER_DATE=2026-01-02T12:00:00Z commit "$repo" 'stale'
+  run_check check "$repo" .
+  assert_status 1
+  assert_output 'STALE:'
+  run_check prune "$repo"
+  assert_status 0
+  assert_no_file "$repo/$name.drawio"
+  assert_file "$repo/$name.svg"
+}
+
+test_shallow_linked_worktree_is_deepened() {
+  diagram_repo "$TMP_DIR/source"
+  edit_source_only "$TMP_DIR/source"
+  git clone -q --depth 1 "file://$TMP_DIR/source" "$TMP_DIR/clone"
+  git -C "$TMP_DIR/clone" worktree add --detach "$TMP_DIR/linked" HEAD
+  run_check check "$TMP_DIR/linked"
+  assert_status 1
+  assert_output 'does not reach back'
+  run_check check --deepen "$TMP_DIR/linked"
+  assert_status 1
+  assert_output 'STALE:'
+}
+
 run_tests
