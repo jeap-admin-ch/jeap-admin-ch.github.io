@@ -176,33 +176,51 @@ pair_up() {  # <sources|pairs>   (paths on stdin)
 # an image that was never exported, and that is the check's verdict to give, not
 # something to tidy away here.
 prune_sources() {  # <tree>
-  local tree="${1%/}" rel pruned=0
-  while IFS= read -r -d '' rel; do
+  local tree="${1%/}" rel pruned=0 records
+  records="$(mktemp)" || die "cannot create a discovery record file"
+  # Capture the producer status before removing anything; process substitution
+  # would turn failed/partial discovery into successful empty input.
+  if ! list_sources "$tree" sources0 > "$records"; then
+    rm -f -- "$records"
+    die "cannot discover diagram sources in $tree"
+  fi
+  local sources=()
+  mapfile -d '' -t sources < "$records" || { rm -f -- "$records"; die "cannot read source records"; }
+  rm -f -- "$records"
+  for rel in "${sources[@]}"; do
     [ -n "$rel" ] || continue
     rm -f "$tree/$rel" || die "cannot remove diagram source $tree/$rel"
     pruned=$((pruned + 1))
-  done < <(list_sources "$tree" sources0)
+  done
   [ "$pruned" -eq 0 ] || printf 'Pruned %s diagram source(s) from %s\n' "$pruned" "$tree"
-}
-
-# Is the repository shallow?
-is_shallow() {  # <repo>
-  [ "$(git -C "$1" rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]
 }
 
 # The commits the shallow history is grafted at, space-padded for substring
 # matching. Empty for a complete repository.
 shallow_boundary() {  # <repo>
-  local file
-  file="$(git -C "$1" rev-parse --path-format=absolute --git-path shallow 2>/dev/null)"
-  [ -f "$file" ] || return 0
-  printf ' %s ' "$(tr '\n' ' ' < "$file")"
+  local file state boundary
+  state="$(git -C "$1" rev-parse --is-shallow-repository)" || die "cannot determine shallow history"
+  case "$state" in
+    false) return 0 ;;
+    true) ;;
+    *) die "invalid shallow history response" ;;
+  esac
+  file="$(git -C "$1" rev-parse --git-path shallow)" || die "cannot locate shallow history"
+  case "$file" in
+    ''|--*|*$'\n'*) die "invalid shallow history path" ;;
+    /*) ;;
+    *) file="$1/$file" ;;
+  esac
+  [ -f "$file" ] || die "shallow checkout has no boundary file"
+  boundary="$(tr '\n' ' ' < "$file")" || die "cannot read shallow history"
+  [ -n "$boundary" ] || die "shallow boundary file is empty"
+  printf ' %s ' "$boundary"
 }
 
 # "<sha> <unix-timestamp> <iso-date>" of the commit that last touched <path>, or
 # "" when the path has no commit at all (untracked, or ignored).
 last_commit() {  # <repo> <path>
-  git -C "$1" log -1 --format='%H %ct %cI' -- "$2" 2>/dev/null
+  git --literal-pathspecs -C "$1" log -1 --format='%H %ct %cI' -- "$2"
 }
 
 # Does the shallow boundary make any of these paths undatable? `git log -1 --
@@ -213,10 +231,11 @@ last_commit() {  # <repo> <path>
 boundary_dated() {  # <repo> <path>...
   local repo="$1"; shift
   local boundary sha path
-  boundary="$(shallow_boundary "$repo")"
+  boundary="$(shallow_boundary "$repo")" || die "cannot inspect diagram history"
   [ -n "$boundary" ] || return 1
   for path in "$@"; do
-    sha="$(last_commit "$repo" "$path" | cut -d' ' -f1)"
+    sha="$(last_commit "$repo" "$path")" || die "cannot read history for $path"
+    sha="${sha%% *}"
     [ -n "$sha" ] || continue
     case "$boundary" in *" $sha "*) return 0 ;; esac
   done
@@ -234,13 +253,11 @@ deepen_until_datable() {  # <repo> <path>...
   local depth
 
   for depth in $DEEPEN_ROUNDS; do
-    is_shallow "$repo" || return 0
     boundary_dated "$repo" "$@" || return 0
-   printf 'Deepening %s by %s commits to date its diagrams\n' "$(basename "$repo")" "$depth"
+    printf 'Deepening %s by %s commits to date its diagrams\n' "$(basename "$repo")" "$depth"
     git -C "$repo" fetch --quiet --deepen "$depth" 2>/dev/null || break
   done
 
-  is_shallow "$repo" || return 0
   boundary_dated "$repo" "$@" || return 0
 
   # Still grafted at a commit that matters: take the whole history rather than
@@ -259,7 +276,10 @@ is_stale() {  # <repo> <src-sha> <src-ts> <img-sha> <img-ts>
   [ "$src_ts" -gt "$img_ts" ] && return 0
   [ "$src_ts" -eq "$img_ts" ] || return 1
   [ "$src_sha" != "$img_sha" ] || return 1
-  git -C "$repo" merge-base --is-ancestor "$img_sha" "$src_sha" 2>/dev/null
+  local status=0
+  git -C "$repo" merge-base --is-ancestor "$img_sha" "$src_sha" || status=$?
+  [ "$status" -le 1 ] || die "cannot compare diagram commit ancestry"
+  return "$status"
 }
 
 check_tree() {  # [--deepen] <repo> [<subdir>]
@@ -274,8 +294,14 @@ check_tree() {  # [--deepen] <repo> [<subdir>]
   tree="${tree%/}"
   [ -d "$tree" ] || return 0
 
-  local pairs=()
-  mapfile -d '' -t pairs < <(list_pairs "$tree" pairs0)
+  local pairs=() records
+  records="$(mktemp)" || die "cannot create a discovery record file"
+  if ! list_pairs "$tree" pairs0 > "$records"; then
+    rm -f -- "$records"
+    die "cannot discover diagram pairs in $tree"
+  fi
+  mapfile -d '' -t pairs < "$records" || { rm -f -- "$records"; die "cannot read pair records"; }
+  rm -f -- "$records"
   if [ "${#pairs[@]}" -eq 0 ]; then
     return 0
   fi
@@ -302,8 +328,8 @@ Deepen the clone (this check does it itself when run with --deepen, the jEAP doc
   local stale=0 skipped=0 src_info img_info src_sha img_sha src_ts img_ts src_iso img_iso
   for ((i=0; i<${#pairs[@]}; i+=2)); do
     source="${pairs[i]}"; image="${pairs[i+1]}"
-    src_info="$(last_commit "$repo" "$subdir/$source")"
-    img_info="$(last_commit "$repo" "$subdir/$image")"
+    src_info="$(last_commit "$repo" "$subdir/$source")" || die "cannot read history for $source"
+    img_info="$(last_commit "$repo" "$subdir/$image")" || die "cannot read history for $image"
     if [ -z "$src_info" ] || [ -z "$img_info" ]; then
       printf 'WARN: %s / %s is not committed yet — skipping the export check for it\n' \
         "$source" "$image" >&2
