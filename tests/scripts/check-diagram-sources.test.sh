@@ -441,4 +441,69 @@ STUB
   assert_output 'STALE:'
 }
 
+test_pages_and_browser_code_are_never_diagram_sources() {
+  local tree="$TMP_DIR/tree" page
+  for page in overview.mdx overview.html overview.js overview.ts overview.css; do
+    put "$tree" "$page" 'page or code'
+  done
+  put "$tree" overview.svg '<svg/>'
+
+  run_check sources "$tree"
+
+  assert_status 0
+  assert_eq '' "$LAST_OUTPUT" 'a publishable page or browser code is never an editor file'
+
+  run_check prune "$tree"
+  assert_status 0
+  assert_file "$tree/overview.mdx" 'an MDX page must survive pruning'
+  assert_file "$tree/overview.html"
+  assert_file "$tree/overview.js"
+  assert_file "$tree/overview.svg"
+}
+
+test_an_mdx_page_edit_does_not_fail_the_diagram_check() {
+  local repo="$TMP_DIR/repo"
+  git_repo "$repo" 'docs/overview.mdx=# Overview' 'docs/overview.svg=<svg/>'
+  put "$repo" docs/overview.mdx '# Overview, reworded'
+  GIT_AUTHOR_DATE=2030-01-02T12:00:00Z GIT_COMMITTER_DATE=2030-01-02T12:00:00Z commit "$repo" 'page text only'
+
+  run_check check "$repo"
+
+  assert_status 0
+}
+
+test_every_export_format_is_checked_so_a_stale_one_cannot_hide() {
+  local repo="$TMP_DIR/repo"
+  git_repo "$repo" 'docs/flow.drawio=original' 'docs/flow.png=PNG' 'docs/flow.svg=<svg/>'
+
+  run_check pairs "$repo/docs"
+  assert_status 0
+  assert_eq 'flow.drawio flow.png
+flow.drawio flow.svg' "$LAST_OUTPUT" 'one pair per export format'
+
+  put "$repo" docs/flow.drawio 'reworked'
+  put "$repo" docs/flow.png 'PNG updated'
+  GIT_AUTHOR_DATE=2030-01-02T12:00:00Z GIT_COMMITTER_DATE=2030-01-02T12:00:00Z commit "$repo" 'source and png only'
+
+  run_check check "$repo"
+
+  assert_status 1
+  assert_output 'STALE: flow.drawio was changed after flow.svg was exported'
+}
+
+test_a_source_is_pruned_once_despite_several_export_formats() {
+  local tree="$TMP_DIR/tree"
+  put "$tree" flow.drawio 'source'
+  put "$tree" flow.png 'PNG'
+  put "$tree" flow.svg '<svg/>'
+
+  run_check prune "$tree"
+
+  assert_status 0
+  assert_output 'Pruned 1 diagram source(s)'
+  assert_no_file "$tree/flow.drawio"
+  assert_file "$tree/flow.png"
+  assert_file "$tree/flow.svg"
+}
+
 run_tests

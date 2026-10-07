@@ -82,6 +82,14 @@ PUBLISHED_EXTENSIONS="md png jpg jpeg gif webp avif svg pdf txt csv json yaml ym
 # The published extensions that are pictures — only these can have a source.
 IMAGE_EXTENSIONS="svg png jpg jpeg gif webp avif"
 
+# Never somebody's diagram source, whatever a site publishes: page types, a
+# document a site renders on its own origin, and code a site or a browser runs.
+# The jEAP doc service keeps the same list for the same reason
+# (MarkdownAssetRules.isNeverAllowed). Without it the open-ended rule — anything
+# not published is a candidate source — would prune an `overview.mdx` page that
+# Docusaurus publishes, and fail the build when only its text changed.
+NEVER_SOURCE_EXTENSIONS="md mdx html htm xhtml shtml js mjs cjs jsx ts tsx css adoc asciidoc"
+
 # How far to deepen per round before giving up and fetching the whole history.
 DEEPEN_ROUNDS="64 256 1024"
 
@@ -116,10 +124,12 @@ list_pairs() {  # <tree>
 pair_up() {  # <sources|pairs>   (paths on stdin)
   awk -v RS='\0' -v mode="$1" \
       -v published="$PUBLISHED_EXTENSIONS" \
-      -v images="$IMAGE_EXTENSIONS" '
+      -v images="$IMAGE_EXTENSIONS" \
+      -v never="$NEVER_SOURCE_EXTENSIONS" '
     BEGIN {
       n = split(published, a, " "); for (i = 1; i <= n; i++) is_published[a[i]] = 1
       n = split(images, a, " ");    for (i = 1; i <= n; i++) is_image[a[i]] = 1
+      n = split(never, a, " ");     for (i = 1; i <= n; i++) is_never[a[i]] = 1
     }
     # The part of a path after the last slash, and the directory before it.
     function base(p) { return (p ~ /\//) ? substr(p, length(dir(p)) + 2) : p }
@@ -148,24 +158,33 @@ pair_up() {  # <sources|pairs>   (paths on stdin)
     }
     END {
       for (i = 1; i <= NR; i++) {
-        if (extension[i] == "" || is_published[extension[i]]) continue
+        if (extension[i] == "" || is_published[extension[i]] || is_never[extension[i]]) continue
         d = folder[i]
-        best = 0; best_len = -1
+        best_len = -1
         for (k = 1; k <= per_folder[d]; k++) {
           j = member[d, k]
           if (j == i || !is_image[extension[j]]) continue
           s = stem(name[j])
           if (s == name[i]) continue
           if (index(name[i], s ".") != 1) continue
-          # The most specific companion wins: with both a.png and a.b.png
-          # present, a.b.drawio belongs to a.b.png.
-          if (length(s) > best_len) { best_len = length(s); best = j }
+          # The most specific companion stem wins: with both a.png and a.b.png
+          # present, a.b.drawio belongs to a.b.*.
+          if (length(s) > best_len) best_len = length(s)
         }
-        if (best == 0) continue
-        if (mode == "pairs0") printf "%s%c%s%c", path[i], 0, path[best], 0
-        else if (mode == "sources0") printf "%s%c", path[i], 0
-        else if (mode == "pairs") printf "%s %s\n", path[i], path[best]
-        else                 printf "%s\n", path[i]
+        if (best_len < 0) continue
+        if (mode == "sources0") { printf "%s%c", path[i], 0; continue }
+        if (mode == "sources")  { printf "%s\n", path[i]; continue }
+        # Every export format of that stem is a pair of its own, so a stale
+        # export is found whichever format the page embeds.
+        for (k = 1; k <= per_folder[d]; k++) {
+          j = member[d, k]
+          if (j == i || !is_image[extension[j]]) continue
+          s = stem(name[j])
+          if (s == name[i] || length(s) != best_len) continue
+          if (index(name[i], s ".") != 1) continue
+          if (mode == "pairs0") printf "%s%c%s%c", path[i], 0, path[j], 0
+          else                  printf "%s %s\n", path[i], path[j]
+        }
       }
     }
   '

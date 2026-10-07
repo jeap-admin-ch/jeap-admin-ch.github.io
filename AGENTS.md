@@ -63,6 +63,11 @@ Both `dev.sh` and `preview.sh` accept `--local <path>` (repeatable) and `--no-au
    one go. The same rule has a third implementation in Python for the doc pipeline of the business
    applications (`jeap-python-pipeline-lib`, `src/jeap_pipeline/doc_diagram_sources.py`).
 
+   A page type or browser code (`.mdx`, `.html`, `.js`, `.ts`, `.css`, ...) is **never** a diagram
+   source, so a publishable MDX page beside an image is neither pruned nor dated against it. Every
+   export format of one source is paired, so `flow.drawio` beside `flow.png` and `flow.svg` is
+   checked against both.
+
    **Why commit dates and not mtimes**: git neither stores nor restores mtimes — a clone writes every file at checkout time, so in CI all mtimes are equal and their order is arbitrary. An mtime check would pass by luck. **Why `--deepen`**: in a depth-1 clone `git log -1 -- <path>` answers with the shallow boundary commit for everything older, which makes every pair look equally old and the check pass silently. So the checker detects a boundary-dated answer, deepens in rounds (64, 256, 1024, then `--unshallow`) until it has a real one, and **refuses to give a verdict** if it still does not. Repos are therefore still cloned at depth 1 and only a repo that actually ships a diagram ever fetches a second commit — which matters when the build clones ~70 of them.
 
 To assemble from a local checkout on a feature branch (`AUTODISCOVER=false` keeps it offline — otherwise it would enumerate the real GitHub org via `gh`):
