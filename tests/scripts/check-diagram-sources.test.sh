@@ -364,4 +364,81 @@ test_shallow_linked_worktree_is_deepened() {
   assert_output 'STALE:'
 }
 
+test_git_uses_literal_filenames_not_patterns() {
+  local repo="$TMP_DIR/repo"
+  git_repo "$repo" 'docs/flow[1].drawio=original' 'docs/flow[1].svg=original' 'docs/flow1.svg=original'
+  put "$repo" 'docs/flow[1].drawio' 'changed'
+  GIT_AUTHOR_DATE=2030-01-02T12:00:00Z GIT_COMMITTER_DATE=2030-01-02T12:00:00Z commit "$repo" 'stale'
+  put "$repo" 'docs/flow1.svg' 'unrelated'
+  GIT_AUTHOR_DATE=2030-01-03T12:00:00Z GIT_COMMITTER_DATE=2030-01-03T12:00:00Z commit "$repo" 'unrelated'
+  run_check check "$repo"
+  assert_status 1
+  assert_output 'STALE: flow[1].drawio'
+}
+
+test_failed_discovery_neither_passes_nor_prunes_partial_results() {
+  diagram_repo "$TMP_DIR/repo"
+  mkdir "$TMP_DIR/bin"
+  cat > "$TMP_DIR/bin/find" <<'STUB'
+#!/usr/bin/env bash
+printf './images/overview.drawio\0./images/overview.svg\0'
+exit 1
+STUB
+  chmod +x "$TMP_DIR/bin/find"
+  PATH="$TMP_DIR/bin:$PATH" run_check check "$TMP_DIR/repo"
+  assert_status 1
+  assert_output 'cannot discover diagram pairs'
+  PATH="$TMP_DIR/bin:$PATH" run_check prune "$TMP_DIR/repo/docs"
+  assert_status 1
+  assert_output 'cannot discover diagram sources'
+  assert_file "$TMP_DIR/repo/docs/images/overview.drawio"
+}
+
+test_git_failures_are_not_treated_as_uncommitted_pairs() {
+  diagram_repo "$TMP_DIR/repo"
+  mkdir "$TMP_DIR/bin"
+  export REAL_GIT
+  REAL_GIT="$(command -v git)"
+  cat > "$TMP_DIR/bin/git" <<'STUB'
+#!/usr/bin/env bash
+case " $* " in
+  *" --path-format"*) exit 90 ;;
+  *" log "*) [ "$FAIL_AT" != log ] || exit 128 ;;
+  *" --is-shallow-repository "*) [ "$FAIL_AT" != shallow ] || exit 128 ;;
+esac
+exec "$REAL_GIT" "$@"
+STUB
+  chmod +x "$TMP_DIR/bin/git"
+  FAIL_AT=log PATH="$TMP_DIR/bin:$PATH" run_check check "$TMP_DIR/repo"
+  assert_status 1
+  assert_output 'cannot read history'
+  FAIL_AT=shallow PATH="$TMP_DIR/bin:$PATH" run_check check "$TMP_DIR/repo"
+  assert_status 1
+  assert_output 'cannot inspect diagram history'
+}
+
+test_relative_shallow_file_works_without_path_format_option() {
+  diagram_repo "$TMP_DIR/source"
+  edit_source_only "$TMP_DIR/source"
+  git clone -q --depth 1 "file://$TMP_DIR/source" "$TMP_DIR/shallow"
+  mkdir "$TMP_DIR/bin"
+  export REAL_GIT
+  REAL_GIT="$(command -v git)"
+  cat > "$TMP_DIR/bin/git" <<'STUB'
+#!/usr/bin/env bash
+case " $* " in
+  *" --path-format"*) exit 90 ;;
+  *" --git-path shallow "*) printf '.git/shallow\n'; exit 0 ;;
+esac
+exec "$REAL_GIT" "$@"
+STUB
+  chmod +x "$TMP_DIR/bin/git"
+  PATH="$TMP_DIR/bin:$PATH" run_check check "$TMP_DIR/shallow"
+  assert_status 1
+  assert_output 'does not reach back'
+  PATH="$TMP_DIR/bin:$PATH" run_check check --deepen "$TMP_DIR/shallow"
+  assert_status 1
+  assert_output 'STALE:'
+}
+
 run_tests
