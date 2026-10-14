@@ -76,10 +76,14 @@
 #                  Default: https://github.com/<JME_ORG>
 #   JME_DIR        Destination folder (under DOCS_DEST) JME repo sections are
 #                  nested under. Default: jme-examples
+#   JME_MANIFEST_BRANCH  Branch of the jme umbrella repo to read docs/_examples
+#                  from. Default: main
 #   AUTODISCOVER_JME  "true"/"false" for the JME auto-discovery pass. Default:
 #                  same as AUTODISCOVER.
 #   EXCLUDE_JME_REPOS  Space-separated JME repo names to hold back. The jme
-#                  umbrella repo and .github are always skipped regardless.
+#                  umbrella repo and .github are always skipped regardless
+#                  (the jme repo's optional docs/_examples grouping manifest is
+#                  still fetched, to group the examples overview).
 #                  Default: empty.
 #
 # Examples:
@@ -164,6 +168,7 @@ LOCAL_REPOS="${LOCAL_REPOS:-}"
 JME_ORG="${JME_ORG:-jme-admin-ch}"
 JME_REPO_BASE_URL="${JME_REPO_BASE_URL:-https://github.com/$JME_ORG}"
 JME_DIR="${JME_DIR:-jme-examples}"
+JME_MANIFEST_BRANCH="${JME_MANIFEST_BRANCH:-main}"
 AUTODISCOVER_JME="${AUTODISCOVER_JME:-$AUTODISCOVER}"
 # Repos never auto-discovered from the JME org: the umbrella repo (jme, just a
 # curated list of the others) and the org profile repo.
@@ -498,6 +503,20 @@ if [ "$AUTODISCOVER_JME" = "true" ]; then
     done <<EOF
 $discovered_jme
 EOF
+
+    # The jme umbrella repo is not an example itself, but ships the optional
+    # grouping manifest for the landing page (docs/_examples, see prepare-docs.sh).
+    jme_checkout="$WORK_DIR/jme"
+    if git clone --depth 1 --branch "$JME_MANIFEST_BRANCH" "$JME_REPO_BASE_URL/jme" "$jme_checkout" >/dev/null 2>&1; then
+      if [ -f "$jme_checkout/docs/_examples" ]; then
+        cp "$jme_checkout/docs/_examples" "$DOCS_DEST/$JME_DIR/_examples"
+        log "Using JME example grouping manifest from jme/docs/_examples"
+      else
+        log "jme has no docs/_examples — the examples overview stays ungrouped"
+      fi
+    else
+      warn "could not clone the jme umbrella repo — the examples overview stays ungrouped"
+    fi
   fi
 else
   log "AUTODISCOVER_JME=false — skipping JME examples"

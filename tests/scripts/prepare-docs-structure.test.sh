@@ -603,4 +603,99 @@ test_jme_examples_repo_links_point_at_the_jme_org() {
     'https://github.com/jme-admin-ch/jme-widget-example/blob/main/build.gradle'
 }
 
+# The jme umbrella's docs/_examples manifest groups the landing page; the repo
+# sections themselves (URLs, sidebar) are untouched.
+jme_grouping_fixture() {
+  doc _order <<<'what-is-jeap'
+  doc what-is-jeap.md <<<'# What is jEAP'
+  repo_section jme-examples/jme-a-example <<<'# A'
+  repo_section jme-examples/jme-b-example <<<'# B'
+  repo_section jme-examples/jme-c-example <<<'# C'
+}
+
+test_jme_examples_landing_page_is_grouped_by_the_examples_manifest() {
+  jme_grouping_fixture
+  doc jme-examples/_examples <<'MD'
+# comment = ignored | too
+second | Second Group
+first  | First Group
+jme-a-example = first
+jme-b-example = second
+MD
+
+  run_prepare
+
+  local idx; idx="$(section_dir jme-examples)/index.md"
+  assert_contains "$idx" '## Second Group'
+  assert_contains "$idx" '## First Group'
+  assert_contains "$idx" '## Other'
+  local order; order="$(grep -n '^## ' "$idx" | sed -E 's/^[0-9]+:## //' | paste -sd, -)"
+  assert_eq 'Second Group,First Group,Other' "$order" 'groups follow the manifest order, Other last'
+  assert_eq 'jme-b-example' "$(awk '/^## Second/{f=1;next} /^##/{f=0} f' "$idx" | grep -o 'jme-[a-z-]*example' | head -1)" \
+    'a repo is listed under its routed group'
+  assert_eq 'jme-c-example' "$(awk '/^## Other/{f=1;next} /^##/{f=0} f' "$idx" | grep -o 'jme-[a-z-]*example' | head -1)" \
+    'an unrouted repo lands in Other'
+  assert_eq 3 "$(grep -c '^- \[jme-' "$idx")" 'every repo is listed exactly once'
+}
+
+test_jme_examples_manifest_skips_empty_groups_and_warns_on_unknown_repos() {
+  jme_grouping_fixture
+  doc jme-examples/_examples <<'MD'
+used   | Used
+unused | Unused
+jme-a-example = used
+jme-b-example = used
+jme-c-example = used
+jme-gone-example = used
+jme-d-example = undeclared
+MD
+
+  run_prepare
+
+  local idx; idx="$(section_dir jme-examples)/index.md"
+  assert_not_contains "$idx" '## Unused'
+  assert_not_contains "$idx" '## Other' 'no Other group when every repo is routed'
+  assert_output "routes unknown repo 'jme-gone-example'"
+}
+
+test_jme_examples_manifest_is_not_treated_as_a_doc_or_repo_section() {
+  jme_grouping_fixture
+  doc jme-examples/_examples <<'MD'
+g | G
+jme-a-example = g
+MD
+  local before; before="$(cat "$DOCS_DEST/jme-examples/_examples")"
+
+  run_prepare
+
+  local dir; dir="$(section_dir jme-examples)"
+  assert_eq "$before" "$(cat "$dir/_examples")" 'the manifest file is left untouched (no front matter injected)'
+  assert_not_contains "$dir/index.md" '_examples' 'the manifest is not listed on the landing page'
+  assert_eq 3 "$(grep -c '^- \[jme-' "$dir/index.md")" 'only the repo sections are listed'
+  [ ! -e "$dir/_examples/index.md" ] || fail 'the manifest must not become a section'
+}
+
+test_jme_examples_landing_page_stays_flat_without_a_manifest() {
+  jme_grouping_fixture
+
+  run_prepare
+
+  local idx; idx="$(section_dir jme-examples)/index.md"
+  assert_not_contains "$idx" '## '
+  assert_eq 3 "$(grep -c '^- \[jme-' "$idx")"
+}
+
+test_jme_examples_grouped_landing_page_is_stable_across_reruns() {
+  jme_grouping_fixture
+  doc jme-examples/_examples <<<'g | G
+jme-a-example = g'
+
+  run_prepare
+  cp "$(section_dir jme-examples)/index.md" "$TMP_DIR/first-landing.md"
+  run_prepare
+
+  assert_eq "$(cat "$TMP_DIR/first-landing.md")" "$(cat "$(section_dir jme-examples)/index.md")" \
+    'the generated landing page is identical on a second run'
+}
+
 run_tests
