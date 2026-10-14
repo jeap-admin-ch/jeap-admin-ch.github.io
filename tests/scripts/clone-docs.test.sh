@@ -419,6 +419,35 @@ test_jme_autodiscovery_excludes_dot_github() {
   assert_no_file "$(section_dir jme-examples/.github)" '.github is always excluded'
 }
 
+test_jme_examples_manifest_is_fetched_from_the_jme_umbrella() {
+  make_umbrella "$TMP_DIR/src/umbrella"
+  git_repo "$TMP_DIR/src/jme-widget-example" 'README.md=# JME Widget Example'
+  git_repo "$TMP_DIR/src/jme" 'README.md=# JME umbrella' 'docs/_examples=g | Group
+jme-widget-example = g'
+  local fakebin; fakebin="$(make_fake_gh jme-widget-example jme)"
+
+  PATH="$fakebin:$PATH" run_clone \
+    REPO_BASE_URL="file://$TMP_DIR/src" REPOS="umbrella:root" AUTODISCOVER=false \
+    JME_REPO_BASE_URL="file://$TMP_DIR/src" AUTODISCOVER_JME=true
+
+  assert_contains "$(docs_dest)/jme-examples/_examples" 'jme-widget-example = g'
+  assert_no_file "$(section_dir jme-examples/jme)" 'the umbrella is still not published as a section'
+}
+
+test_jme_examples_manifest_is_optional() {
+  make_umbrella "$TMP_DIR/src/umbrella"
+  git_repo "$TMP_DIR/src/jme-widget-example" 'README.md=# JME Widget Example'
+  git_repo "$TMP_DIR/src/jme" 'README.md=# JME umbrella'
+  local fakebin; fakebin="$(make_fake_gh jme-widget-example jme)"
+
+  PATH="$fakebin:$PATH" run_clone \
+    REPO_BASE_URL="file://$TMP_DIR/src" REPOS="umbrella:root" AUTODISCOVER=false \
+    JME_REPO_BASE_URL="file://$TMP_DIR/src" AUTODISCOVER_JME=true
+
+  assert_no_file "$(docs_dest)/jme-examples/_examples"
+  assert_output 'stays ungrouped'
+}
+
 # ---------------------------------------------------------------------------
 # The two steps together — what the deploy workflow actually runs.
 # ---------------------------------------------------------------------------
