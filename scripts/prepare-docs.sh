@@ -305,15 +305,68 @@ if [ -d "$DOCS_DEST/$JME_DIR" ]; then
   write_category "$DOCS_DEST/$JME_DIR" "jEAP Examples" "$jme_pos" true
   MANIFEST_DIRS="$MANIFEST_DIRS $JME_DIR"
 
+  # Optional grouping manifest shipped by the jme umbrella repo (docs/_examples,
+  # copied here by clone-docs.sh): "<id> | <Label>" declares a group in display
+  # order, "<repo> = <id>" routes a repo into it. Repos it does not route (or
+  # routes to an undeclared group) land in a trailing "Other" group; without the
+  # manifest the list stays flat.
+  jme_manifest="$DOCS_DEST/$JME_DIR/_examples"
+  jme_cat_ids=(); jme_cat_labels=(); jme_routes=""
+  if [ -f "$jme_manifest" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      line="${line%%#*}"
+      case "$line" in
+        *=*) r="$(printf '%s' "${line%%=*}" | xargs)"; c="$(printf '%s' "${line#*=}" | xargs)"
+             [ -n "$r" ] && [ -n "$c" ] && jme_routes="$jme_routes $r=$c" ;;
+        *\|*) c="$(printf '%s' "${line%%|*}" | xargs)"; l="$(printf '%s' "${line#*|}" | xargs)"
+             [ -n "$c" ] && [ -n "$l" ] && { jme_cat_ids+=("$c"); jme_cat_labels+=("$l"); } ;;
+      esac
+    done < "$jme_manifest"
+  fi
+
+  jme_repos=()
+  while IFS= read -r rdir; do
+    [ -f "$rdir/index.md" ] && jme_repos+=("$(basename "$rdir")")
+  done < <(printf '%s\n' "$DOCS_DEST/$JME_DIR"/*/ | LC_ALL=C sort)
+
+  jme_group_of() {  # <repo> -> declared group id, or empty
+    local entry id
+    for entry in $jme_routes; do
+      [ "${entry%%=*}" = "$1" ] || continue
+      for id in "${jme_cat_ids[@]}"; do [ "$id" = "${entry#*=}" ] && { printf '%s' "$id"; return; }; done
+    done
+  }
+
+  jme_print_group() {  # <heading> <group id or empty for "Other">
+    local heading="$1" gid="$2" rname lines=""
+    for rname in ${jme_repos[@]+"${jme_repos[@]}"}; do
+      [ "$(jme_group_of "$rname")" = "$gid" ] || continue
+      lines="$lines$(printf -- '- [%s](./%s/) ([source](%s/%s))' "$rname" "$rname" "$JME_REPO_WEB_BASE_URL" "$rname")"$'\n'
+    done
+    [ -n "$lines" ] || return 0
+    [ -z "$heading" ] || printf '## %s\n\n' "$heading"
+    printf '%s\n' "$lines"
+  }
+
+  for entry in $jme_routes; do
+    case " ${jme_repos[*]-} " in
+      *" ${entry%%=*} "*) ;;
+      *) warn "JME: _examples routes unknown repo '${entry%%=*}'" ;;
+    esac
+  done
+
   {
     printf '# jEAP Examples\n\n'
     printf 'Example projects demonstrating how to use jEAP building blocks, sourced from the\n'
     printf '[%s](%s) GitHub organization.\n\n' "$JME_ORG" "$JME_REPO_WEB_BASE_URL"
-    while IFS= read -r rdir; do
-      rname="$(basename "$rdir")"
-      [ -f "$rdir/index.md" ] || continue
-      printf -- '- [%s](./%s/) ([source](%s/%s))\n' "$rname" "$rname" "$JME_REPO_WEB_BASE_URL" "$rname"
-    done < <(printf '%s\n' "$DOCS_DEST/$JME_DIR"/*/ | LC_ALL=C sort)
+    if [ "${#jme_cat_ids[@]}" -eq 0 ]; then
+      jme_print_group "" ""
+    else
+      for i in "${!jme_cat_ids[@]}"; do
+        jme_print_group "${jme_cat_labels[$i]}" "${jme_cat_ids[$i]}"
+      done
+      jme_print_group "Other" ""
+    fi
   } > "$DOCS_DEST/$JME_DIR/index.md"
 fi
 
