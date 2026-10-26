@@ -45,11 +45,55 @@
   flex-wrap: wrap;
 }
 
+/* Minimal Maven snippet under the hero buttons — makes the "one dependency"
+   promise concrete. Dark code block with hard-coded colors so the text is
+   readable in both light and dark themes. */
+.codeSnippet {
+  max-width: 560px;
+  margin: 2.5rem auto 0;
+  text-align: left;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  background: #1e1e2e;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.codeTitle {
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #a9aec6;
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.3);
+}
+
+.codeSnippet pre {
+  margin: 0;
+  padding: 1rem 1.25rem;
+  background: transparent;
+}
+
+.codeSnippet code {
+  color: #e2e8f0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  background: transparent;
+}
+
 .features {
   display: flex;
   align-items: center;
   padding: 3rem 0 4rem;
   width: 100%;
+}
+
+@media (max-width: 996px) {
+  .heroTitle {
+    font-size: 2.5rem;
+  }
 }
 
 /* Each feature occupies a grid column; the column is a flex container so the

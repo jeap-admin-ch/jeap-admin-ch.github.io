@@ -3,7 +3,7 @@
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'jEAP',
-  tagline: 'Java Enterprise Application Platform',
+  tagline: 'Ship business value, not infrastructure code.',
   favicon: 'img/favicon.ico',
 
   url: 'https://jeap-admin-ch.github.io',

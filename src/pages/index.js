@@ -38,7 +38,7 @@ const FEATURES = [
     icon: 'fa-solid fa-paper-plane',
     title: 'Event-Driven Messaging',
     description:
-        'Support for Event-driven Architecture is a first class ciziten in jEAP. Apache Kafka and Avro messaging with the Transactional Outbox and Sequential Inbox patterns built in, as well as compatibility checks enabling CI/CD.',
+        'Event-driven architecture is a first-class citizen in jEAP. Apache Kafka and Avro messaging with the Transactional Outbox and Sequential Inbox patterns built in, as well as compatibility checks enabling CI/CD.',
     to: '/docs/building-blocks/libraries',
   },
   {
@@ -55,6 +55,15 @@ const FEATURES = [
       'Open Source - Apache 2.0 licensed. jEAP core is platform agnostic, with support for integrating with cloud-native platforms.',
     to: '/docs/building-blocks/tooling',
   },
+];
+
+// Minimal Maven snippet shown above the fold — the "one dependency" promise,
+// kept concrete. Coordinates match the using-jeap documentation.
+const CODE_LINES = [
+  '<parent>',
+  '    <groupId>ch.admin.bit.jeap</groupId>',
+  '    <artifactId>jeap-spring-boot-parent</artifactId>',
+  '</parent>',
 ];
 
 function HomepageHeader() {
@@ -75,18 +84,26 @@ function HomepageHeader() {
         <p className={styles.heroTagline}>{siteConfig.tagline}</p>
         <p className={styles.heroSubtitle}>
           A suite of Spring Boot libraries, starters and reusable microservices that solve
-          the cross-functional concerns of enterprise applications — so your team can focus
-          on business logic.
+          the cross-functional concerns of enterprise applications — security, messaging,
+          persistence, observability — once and for everyone. Inherit the platform, skip
+          the plumbing, and start writing business logic on day one.
         </p>
         <div className={styles.buttons}>
           <Link className="button button--primary button--lg" to="/docs/what-is-jeap">
             Get Started
+          </Link>
+          <Link className="button button--secondary button--lg" to="/docs/why-jeap">
+            Why jEAP?
           </Link>
           <Link
             className="button button--secondary button--lg"
             to="https://github.com/jeap-admin-ch">
             View on GitHub
           </Link>
+        </div>
+        <div className={styles.codeSnippet}>
+          <div className={styles.codeTitle}>Add jEAP to your service</div>
+          <pre><code>{CODE_LINES.join('\n')}</code></pre>
         </div>
       </div>
     </header>
@@ -114,7 +131,7 @@ export default function Home() {
   return (
     <Layout
       title={siteConfig.title}
-      description="jEAP — Java Enterprise Application Platform: Spring Boot libraries, starters and reusable microservices for enterprise applications.">
+      description="jEAP — Java Enterprise Application Platform: Spring Boot libraries, starters and reusable microservices for enterprise applications. Solve the cross-functional concerns once and focus on business logic.">
       <HomepageHeader />
       <main>
         <section className={styles.features}>
