@@ -13,6 +13,7 @@ const config = {
   projectName: 'jeap-admin-ch.github.io',
 
   onBrokenLinks: 'throw',
+  onBrokenAnchors: 'throw',
 
   markdown: {
     mermaid: true,
