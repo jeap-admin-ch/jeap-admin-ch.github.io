@@ -360,6 +360,37 @@ test_a_local_checkout_keeps_its_diagram_sources_on_disk() {
 }
 
 # ---------------------------------------------------------------------------
+# MDX — jEAP documentation is written in Markdown only. The site parses every
+# page as CommonMark, so an .mdx page must stop the build rather than be
+# published as broken text.
+# ---------------------------------------------------------------------------
+test_an_mdx_page_fails_the_clone_step_naming_the_page() {
+  git_repo "$TMP_DIR/src/demo" \
+    'README.md=# Demo repo' \
+    'docs/usage.md=# Usage' \
+    'docs/deep/widget.mdx=import Tabs from "@theme/Tabs"'
+
+  run_clone_expecting_failure REPO_BASE_URL="file://$TMP_DIR/src" \
+    REPOS="demo:nested" AUTODISCOVER=false
+
+  [ "$LAST_STATUS" -ne 0 ] || fail "an .mdx page must fail the build, got status 0"
+  assert_output 'written in Markdown only'
+  assert_output 'demo/deep/widget.mdx' 'the path names the repo section and the page'
+}
+
+test_an_mdx_page_in_a_local_checkout_fails_the_clone_step_too() {
+  make_umbrella "$TMP_DIR/src/umbrella"
+  make_repo "$TMP_DIR/src/demo"
+  printf '# Widget\n' > "$TMP_DIR/src/demo/docs/Widget.MDX"
+
+  run_clone_expecting_failure REPO_BASE_URL="file://$TMP_DIR/src" REPOS="umbrella:root" \
+    AUTODISCOVER=false LOCAL_REPOS="$TMP_DIR/src/demo"
+
+  [ "$LAST_STATUS" -ne 0 ] || fail "a local preview must fail like the site build, got status 0"
+  assert_output 'demo/Widget.MDX' 'the extension is matched regardless of case'
+}
+
+# ---------------------------------------------------------------------------
 # JME auto-discovery — a second, independent org pass. AUTODISCOVER_JME
 # defaults to AUTODISCOVER, so the off-by-default umbrella-only tests above
 # already leave it disabled; these tests exercise it explicitly with a fake
