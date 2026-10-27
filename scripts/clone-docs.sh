@@ -25,6 +25,9 @@
 # at depth 1; only a repo that actually ships a diagram gets deepened, and only
 # as far as dating that diagram takes.
 #
+# MDX: jEAP documentation is written in Markdown only. The script fails the build
+# when any assembled page is an .mdx file, naming it.
+#
 # The script assembles content from three sources:
 #   1. The static REPOS manifest (the umbrella general doc, placed at root).
 #   2. Auto-discovery: every repo in the GitHub org that ships a top-level docs/
@@ -520,6 +523,19 @@ EOF
   fi
 else
   log "AUTODISCOVER_JME=false — skipping JME examples"
+fi
+
+# jEAP documentation is written in Markdown only. An .mdx page is a program — it
+# can import and run arbitrary JavaScript in the site build and in the reader's
+# browser — and the site parses every page as CommonMark anyway (markdown.format
+# 'md' in docusaurus.config.js), so an .mdx page would be published as broken
+# text. Checked on the assembled tree so every source is covered alike: the
+# static manifest, auto-discovery, LOCAL_REPOS and the JME examples. The path
+# names the section, and with it the repo the page came from.
+mdx_pages="$(cd "$DOCS_DEST" && find . -iname '*.mdx' | sed 's#^\./#  #' | sort)"
+if [ -n "$mdx_pages" ]; then
+  die "jEAP documentation is written in Markdown only — rename these MDX page(s) to .md:
+$mdx_pages"
 fi
 
 count="$(find "$DOCS_DEST" -name '*.md' | wc -l | tr -d ' ')"
