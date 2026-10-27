@@ -16,6 +16,11 @@ const config = {
   onBrokenAnchors: 'throw',
 
   markdown: {
+    // The docs are aggregated from many repositories whose authors write plain GitHub Markdown, which
+    // the MDX parser (the Docusaurus default for every file) rejects on a stray `<` or `{` and thereby
+    // breaks the whole site. 'detect' parses .md as CommonMark and keeps MDX for files that opt in
+    // with the .mdx extension.
+    format: 'detect',
     mermaid: true,
     hooks: {
       onBrokenMarkdownLinks: 'warn',
