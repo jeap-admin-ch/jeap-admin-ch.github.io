@@ -1,0 +1,14 @@
+{
+  "recurse": true,
+  "concurrency": 20,
+  "timeout": 20000,
+  "retry": true,
+  "retryErrors": true,
+  "format": "json",
+  "skip": [
+    "^https?://localhost[:/]",
+    "^https://server/",
+    "^https://medium\\.com/",
+    "^https://crates\\.io/"
+  ]
+}

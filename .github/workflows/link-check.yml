@@ -1,0 +1,168 @@
+name: Check external links
+
+# Crawls the live, already-deployed site for dead links — including external
+# links to other projects' docs, which Docusaurus's own onBrokenLinks/
+# onBrokenAnchors never check (they only know about the site's own pages).
+# External sites rot on their own schedule, independent of any change here,
+# so this runs on a timer rather than on push, and never blocks a deploy:
+# it's a separate workflow with no dependency wired into deploy.yml. A run
+# with broken links shows up red in the Actions tab and notifies Teams,
+# same pattern as deploy.yml's own failure notification — it does not fail
+# any other workflow.
+#
+# Known non-fixable false positives (JS-only pages, bot-blocked UAs,
+# intentional example placeholders) are filtered in linkinator.config.json;
+# see the comment above its "skip" list in AGENTS.md before adding to it.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+      timezone: 'Europe/Zurich'
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-links:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      broken_count: ${{ steps.summary.outputs.broken_count }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check links on the live site
+        # Calls the binary directly, not `npm run` — npm prepends a banner to
+        # stdout that would corrupt the JSON the next steps parse with jq.
+        run: npx --no-install linkinator https://jeap-admin-ch.github.io/ --config linkinator.config.json > link-check-report.json || true
+
+      - name: Upload full report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: link-check-report
+          path: link-check-report.json
+          retention-days: 30
+
+      - name: Summarize broken links
+        id: summary
+        if: always()
+        run: |
+          BROKEN=$(jq '[.links[] | select(.state == "BROKEN")] | unique_by(.url)' link-check-report.json)
+          COUNT=$(echo "$BROKEN" | jq 'length')
+          echo "broken_count=$COUNT" >> "$GITHUB_OUTPUT"
+          {
+            echo "## External link check"
+            echo
+            if [ "$COUNT" -eq 0 ]; then
+              echo "✅ No broken external links found."
+            else
+              echo "❌ $COUNT broken link(s) found:"
+              echo
+              echo "| Status | URL | Found on |"
+              echo "|---|---|---|"
+              echo "$BROKEN" | jq -r '.[] | "| \(.status) | \(.url) | \(.parent) |"'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail the job if broken links were found
+        if: steps.summary.outputs.broken_count != '0'
+        run: |
+          echo "Found ${{ steps.summary.outputs.broken_count }} broken link(s) — see the job summary and the uploaded report."
+          exit 1
+
+  notify-ms-teams:
+    needs: check-links
+    if: always() && needs.check-links.result == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download link check report
+        uses: actions/download-artifact@v4
+        with:
+          name: link-check-report
+
+      - name: Notify Microsoft Teams of broken links
+        env:
+          MS_TEAMS_WEBHOOK: ${{ secrets.MS_TEAMS_WEBHOOK }}
+        run: |
+          if [ -z "$MS_TEAMS_WEBHOOK" ]; then
+            echo "MS_TEAMS_WEBHOOK is not configured"
+            exit 0
+          fi
+
+          BROKEN=$(jq '[.links[] | select(.state == "BROKEN")] | unique_by(.url)' link-check-report.json)
+          COUNT=$(echo "$BROKEN" | jq 'length')
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          LIST=$(echo "$BROKEN" | jq -r '.[:10][] | "- [\(.status)] \(.url)"')
+          MORE=""
+          if [ "$COUNT" -gt 10 ]; then
+            MORE=$'\n'"... and $((COUNT - 10)) more (see the full report)."
+          fi
+
+          jq -n \
+            --arg count "$COUNT broken link(s)" \
+            --arg list "$LIST$MORE" \
+            --arg runUrl "$RUN_URL" \
+            '{
+              type: "message",
+              attachments: [
+                {
+                  contentType: "application/vnd.microsoft.card.adaptive",
+                  content: {
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    type: "AdaptiveCard",
+                    version: "1.4",
+                    body: [
+                      {
+                        type: "TextBlock",
+                        text: "🔴 External link check — jeap-admin-ch.github.io",
+                        weight: "Bolder",
+                        size: "Medium",
+                        wrap: true
+                      },
+                      {
+                        type: "TextBlock",
+                        text: $count,
+                        weight: "Bolder",
+                        wrap: true
+                      },
+                      {
+                        type: "TextBlock",
+                        text: $list,
+                        wrap: true,
+                        fontType: "Monospace"
+                      }
+                    ],
+                    actions: [
+                      {
+                        type: "Action.OpenUrl",
+                        title: "View full report",
+                        url: $runUrl
+                      }
+                    ]
+                  }
+                }
+              ]
+            }' |
+            http_code=$(curl --silent --show-error \
+              --output /dev/null \
+              --write-out "%{http_code}" \
+              -H "Content-Type: application/json" \
+              --data-binary @- \
+              "$MS_TEAMS_WEBHOOK" 2>/dev/null)
+            if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+              echo "Teams notification failed (HTTP status: $http_code)"
+              exit 1
+            fi
