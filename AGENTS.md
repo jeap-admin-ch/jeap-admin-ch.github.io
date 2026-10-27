@@ -90,4 +90,12 @@ bash scripts/prepare-docs.sh
 
 Push to `main` → `.github/workflows/deploy.yml` runs the full pipeline (npm ci → clone-docs → prepare-docs → build → deploy to GitHub Pages). The clone step runs with `GH_TOKEN: ${{ github.token }}` so its auto-discovery can enumerate the org via `gh`. PRs get a preview via `pr-preview.yml` (torn down by `pr-preview-teardown.yml`).
 
+## External link check
+
+`onBrokenLinks`/`onBrokenAnchors` only know about the site's own pages — a link out to another project's docs can rot on its own schedule with nothing changing here. `.github/workflows/link-check.yml` crawls the live, already-deployed site weekly with [linkinator](https://github.com/JustinBeckwith/linkinator) (`npm run check:links` runs the same check locally) and reports failures without blocking anything: it's a separate workflow with no dependency wired into `deploy.yml`, so a red run there never stops a deploy. A run with broken links shows up in the Actions tab and, if `MS_TEAMS_WEBHOOK` is configured, notifies Teams.
+
+`linkinator.config.json`'s `skip` list exists for links that are broken *to an automated checker* but not actually broken — verify that distinction before adding to it, since a careless skip pattern hides real breakage:
+- `localhost`/`https://server/` — placeholder addresses in example READMEs, meant for a locally running instance, never reachable from anywhere else.
+- `medium.com`/`crates.io` — both block non-browser HTTP clients outright (even their own most-linked pages 404 or 403 to a plain `curl`, confirmed against `crates.io/crates/serde`); a real break on these sites can't be distinguished from the blanket block, so they're skipped rather than generating permanent noise.
+
 See `README.md` for the full rationale and script env-var reference.

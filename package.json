@@ -12,15 +12,16 @@
     "serve": "docusaurus serve",
     "test": "npm run test:components && npm run test:scripts",
     "test:components": "vitest run",
-    "test:scripts": "bash tests/scripts/run.sh"
+    "test:scripts": "bash tests/scripts/run.sh",
+    "check:links": "linkinator https://jeap-admin-ch.github.io/"
   },
   "dependencies": {
-    "@matfsw/docusaurus-plantuml-plugin": "1.8.6",
     "@docusaurus/core": "3.10.1",
     "@docusaurus/preset-classic": "3.10.1",
     "@docusaurus/theme-mermaid": "3.10.1",
     "@easyops-cn/docusaurus-search-local": "^0.55.2",
     "@fortawesome/fontawesome-free": "7.2.0",
+    "@matfsw/docusaurus-plantuml-plugin": "1.8.6",
     "@mdx-js/react": "3.1.1",
     "clsx": "2.1.1",
     "prism-react-renderer": "2.4.1",
@@ -35,6 +36,7 @@
     "@testing-library/react": "^16.3.2",
     "docusaurus-plugin-llms": "^0.4.0",
     "jsdom": "^29.1.1",
+    "linkinator": "^8.1.0",
     "surge": "^0.27.4",
     "vitest": "^4.1.9"
   },
