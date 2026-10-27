@@ -16,11 +16,12 @@ const config = {
   onBrokenAnchors: 'throw',
 
   markdown: {
-    // The docs are aggregated from many repositories whose authors write plain GitHub Markdown, which
-    // the MDX parser (the Docusaurus default for every file) rejects on a stray `<` or `{` and thereby
-    // breaks the whole site. 'detect' parses .md as CommonMark and keeps MDX for files that opt in
-    // with the .mdx extension.
-    format: 'detect',
+    // jEAP documentation is written in Markdown only, so every page is parsed as CommonMark, the way
+    // GitHub renders it. MDX (the Docusaurus default for every file) would reject a stray `<` or `{`
+    // in any of the many aggregated repositories and thereby break the whole site, and an .mdx page
+    // could run arbitrary JavaScript in the build and in the reader's browser. clone-docs.sh rejects
+    // .mdx pages outright, so none reaches the site to be published as broken text.
+    format: 'md',
     mermaid: true,
     hooks: {
       onBrokenMarkdownLinks: 'warn',
