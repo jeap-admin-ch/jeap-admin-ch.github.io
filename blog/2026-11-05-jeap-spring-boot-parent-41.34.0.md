@@ -12,6 +12,6 @@ New version [`41.34.0`](https://github.com/jeap-admin-ch/jeap-spring-boot-parent
 ### Changed
 - update jeap-reaction-observer from 11.30.0 to 11.31.0
 - New standalone `jeap-reaction-observer-header-starter` module setting the `JEAP-REACTION-OBSERVATION`
-  response header on requests carrying `JEAP-REACTION-MODEL-VERSION`, see [docs/response-header.md](docs/response-header.md)
+  response header on requests carrying `JEAP-REACTION-MODEL-VERSION`, see docs/response-header.md
   (long operation names are shortened with a SHA-256 suffix)
 
